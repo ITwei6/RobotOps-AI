@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package robotops.log;
+
+option cc_generic_services = true;
+
+import "common.proto";
+
+message ModuleLogEntry {
+  string log_id = 1;
+  string bug_id = 2;
+  string package_id = 3;
+  string robot_sn = 4;
+  robotops.common.RobotType robot_type = 5;
+  string module_name = 6;
+  string file_name = 7;
+  int32 line_no = 8;
+  int64 log_time = 9;
+  string log_level = 10;
+  string message = 11;
+  string raw_line = 12;
+  string trace_id = 13;
+  string task_id = 14;
+  string session_id = 15;
+}
+
+message LogFileInfo {
+  string package_id = 1;
+  string module_name = 2;
+  string file_name = 3;
+  string file_path = 4;
+  int32 line_count = 5;
+}
+
+message ImportLogPackageRequest {
+  string bug_id = 1;
+  string package_id = 2;
+  string package_path = 3;
+  robotops.common.RobotType robot_type = 4;
+  string robot_sn = 5;
+}
+
+message ImportLogPackageResponse {
+  robotops.common.CommonResponse response = 1;
+  string package_id = 2;
+  int32 file_count = 3;
+  int32 log_count = 4;
+  repeated LogFileInfo files = 5;
+}
+
+message QueryLogsRequest {
+  robotops.common.PageRequest page = 1;
+  string bug_id = 2;
+  string package_id = 3;
+  string module_name = 4;
+  string log_level = 5;
+  string keyword = 6;
+  robotops.common.TimeRange time_range = 7;
+}
+
+message QueryLogsResponse {
+  robotops.common.CommonResponse response = 1;
+  robotops.common.PageResponse page = 2;
+  repeated ModuleLogEntry logs = 3;
+}
+
+message GetLogContextRequest {
+  string bug_id = 1;
+  string package_id = 2;
+  string module_name = 3;
+  int64 center_time = 4;
+  int64 before_ms = 5;
+  int64 after_ms = 6;
+  int32 limit = 7;
+}
+
+message GetLogContextResponse {
+  robotops.common.CommonResponse response = 1;
+  repeated ModuleLogEntry logs = 2;
+}
+
+message ListLogFilesRequest {
+  string package_id = 1;
+  string module_name = 2;
+}
+
+message ListLogFilesResponse {
+  robotops.common.CommonResponse response = 1;
+  repeated LogFileInfo files = 2;
+}
+
+service LogService {
+  rpc ImportLogPackage(ImportLogPackageRequest) returns (ImportLogPackageResponse);
+  rpc QueryLogs(QueryLogsRequest) returns (QueryLogsResponse);
+  rpc GetLogContext(GetLogContextRequest) returns (GetLogContextResponse);
+  rpc ListLogFiles(ListLogFilesRequest) returns (ListLogFilesResponse);
+}
+

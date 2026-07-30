@@ -38,7 +38,7 @@
 
 - 项目定位是机器人智能运维与诊断平台，不是普通设备后台。
 - 第一阶段先跑通研发测试 Bug 诊断闭环。
-- 第二阶段再扩展售后实时监控和远程运维。
+- 第二阶段再扩展部署运维实时监控和远程运维。
 - C++ 后端继续使用 brpc/protobuf 和 `cpp-microservice-kit`。
 - Python 只负责 Agent/RAG/源码分析，不直接承担核心业务落库。
 - Web 是主前端，Qt 不进入 MVP。
@@ -161,13 +161,13 @@ feat(agent): link logs with source evidence
 feat(web): build robot diagnosis console
 ```
 
-### 3.7 阶段 6：售后运维扩展
+### 3.7 阶段 6：部署运维扩展
 
 目标：
 
 - 引入机器人资产。
 - 引入模块心跳和实时状态。
-- 引入事件告警和售后工单。
+- 引入事件告警和现场工单。
 
 验收：
 
@@ -336,4 +336,3 @@ git remote add origin <repo>
 - Web 前端设计
 
 完成这些文档并提交后，再进入代码开发阶段。
-

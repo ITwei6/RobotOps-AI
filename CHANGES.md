@@ -8,9 +8,9 @@
 
 - 新建 `RobotBugOps` 项目目录。
 - 将项目正式定位为 `RobotOps AI 机器人智能运维与诊断平台`。
-- 明确项目不是单纯 Bug 日志分析工具，而是覆盖研发测试阶段和售后运维阶段的一体化平台。
+- 明确项目不是单纯 Bug 日志分析工具，而是覆盖研发测试阶段和部署运维阶段的一体化平台。
 - 明确第一阶段以 Bug 单、日志包、源码关联、AI 诊断为核心。
-- 明确第二阶段扩展机器人实时状态、模块心跳、事件告警、售后工单和远程诊断。
+- 明确第二阶段扩展机器人实时状态、模块心跳、事件告警、现场工单和远程诊断。
 - 明确主前端改为 Web 管理台，不再使用 Qt 作为主前端。
 - 明确继续参考旧 `DeviceOps` 项目和 `cpp-microservice-kit` 脚手架能力。
 - 在 `AGENTS.md` 中写入项目定位、技术路线、模块分层、开发环境、前端方向、Git 提交规范和每次开发注意事项。
@@ -19,7 +19,7 @@
 
 - 原 DeviceOps 项目定位偏通用设备运维，和真实机器人研发测试流程不够贴合。
 - 真实业务流程是测试人员提交飞书 Bug，开发工程师基于机器人类型、发生时间、日志包和源码分析问题。
-- 后续机器人售出后，平台仍需要扩展为实时运维和售后诊断系统，所以不能只设计成日志分析工具。
+- 后续机器人交付后，平台仍需要扩展为实时运维和远程诊断系统，所以不能只设计成日志分析工具。
 
 影响范围：
 
@@ -48,13 +48,13 @@
 - README 从业务痛点、两阶段定位、能力地图、典型诊断场景、技术栈、服务规划和当前状态几个方面描述项目。
 - 新增 `docs/05_web_frontend_design.md`，明确主前端使用 Web 管理台，不再使用 Qt。
 - 在 MVP 计划中补充“文档优先”验收标准。
-- 在 MVP 计划中补充售后运维扩展阶段。
+- 在 MVP 计划中补充部署运维扩展阶段。
 
 原因：
 
 - 当前阶段先完成文档设计，再进入开发。
 - 新项目需要像正式平台项目一样清楚说明业务闭环，而不是只堆服务名和技术栈。
-- Web 管理台比 Qt 更适合展示机器人运维平台、Bug 分析、日志检索、AI 诊断报告和售后工单。
+- Web 管理台比 Qt 更适合展示机器人运维平台、Bug 分析、日志检索、AI 诊断报告和现场工单。
 
 影响范围：
 
@@ -135,3 +135,54 @@
 是否已提交 Git：
 
 - 是。已纳入阶段 0 初始提交。
+
+## 2026-07-30 阶段 1：log-service 日志包解析服务
+
+修改内容：
+
+- 新增顶层 `CMakeLists.txt`，沿用 `cpp-microservice-kit` 和 brpc/protobuf 构建思路。
+- 新增 `proto/common.proto` 和 `proto/log.proto`。
+- 新增 `backend/services/log_service/` 子服务。
+- 实现 `LogService.ImportLogPackage`，支持导入已解压的机器人日志目录。
+- 实现 `LogService.QueryLogs`，支持按 Bug、日志包、模块、级别、关键词和时间范围查询。
+- 实现 `LogService.GetLogContext`，支持按中心时间提取前后日志上下文。
+- 实现 `LogService.ListLogFiles`，支持查看日志包中识别出的模块日志文件。
+- 新增样例日志目录 `samples/robot_20260730/`，包含 `interaction`、`mc`、`agent`、`hds` 四个模块日志。
+- 更新 `AGENTS.md` 当前阶段说明，进入后端开发阶段。
+
+原因：
+
+- log-service 是 RobotOps AI 第一阶段 Bug 日志分析闭环的核心服务。
+- 研发测试阶段的主要输入是测试上传的完整日志包，必须先具备日志包解析、模块识别和上下文查询能力。
+- 第一版先实现本地目录导入和内存索引，后续再接入 Elasticsearch、MySQL 和日志包压缩文件解压。
+
+影响范围：
+
+- `CMakeLists.txt`
+- `proto/common.proto`
+- `proto/log.proto`
+- `backend/services/log_service/`
+- `samples/robot_20260730/`
+- `AGENTS.md`
+
+当前限制：
+
+- MVP 当前只支持已解压日志目录，暂不直接解析 `.zip` / `.tar.gz`。
+- 当前日志索引保存在服务内存中，服务重启后需要重新导入日志包。
+- 当前尚未接入 Elasticsearch、MySQL、Redis 和 RabbitMQ。
+
+验证结果：
+
+- 已尝试在当前 Windows shell 执行 `cmake -S . -B build`，但本机没有 `cmake` 命令。
+- 已尝试检查 Docker 开发容器，但本机没有 `docker` 命令。
+- 因此本阶段未完成编译验证，需要在 Linux/dev 容器中执行 CMake 构建。
+
+下一步：
+
+- 在 Linux/dev 容器中验证 CMake 构建。
+- 根据验证结果修正编译问题。
+- 下一阶段开发 `ticket-diagnosis-service`，建立 Bug 单和诊断任务入口。
+
+是否已提交 Git：
+
+- 是。已纳入阶段 1 log-service 提交。
