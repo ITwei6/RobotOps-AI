@@ -269,6 +269,7 @@ docs/05_web_frontend_design.md
 docs/06_development_guide.md
 docs/07_backend_linux_handoff.md
 docs/08_agent_service_focus.md
+docs/09_langgraph_langchain_agent_research.md
 ```
 
 后续开发必须先阅读：

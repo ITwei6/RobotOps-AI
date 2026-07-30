@@ -522,3 +522,39 @@ ROBOTOPS_AGENT_SERVICE_URL=http://127.0.0.1:9601
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-30 阶段 4 补充：LangGraph / LangChain / ReAct Agent 调研
+
+修改内容：
+
+- 新增 `docs/09_langgraph_langchain_agent_research.md`。
+- 调研 LangGraph、LangChain Agents、ReAct、Open Canvas、Open Agent Platform、Social Media Agent、LangGraph Supervisor、Agent Protocol 等资料。
+- 记录 RobotOps AI 后续 Agent 架构建议：
+  - LangGraph 用于诊断流程编排。
+  - LangChain 用于工具封装。
+  - ReAct 用于 `reason -> tool action -> observation -> next step` 的诊断取证循环。
+  - 不过早做复杂多 Agent supervisor。
+  - 不把全部业务逻辑塞进一个大 prompt。
+- 更新 `README.md` 文档索引。
+
+原因：
+
+- 用户明确要求先学习网上开源优秀 LangGraph / LangChain Agent 项目，再重点开发 RobotOps AI 的 Agent 部分。
+- 用户补充要求学习 ReAct 思想。
+- RobotOps AI 的核心是复现 interaction Bug 排障过程，必须让 Agent 具备可审计的取证和推理流程。
+
+影响范围：
+
+- `docs/09_langgraph_langchain_agent_research.md`
+- `README.md`
+- `CHANGES.md`
+
+下一步：
+
+- 按调研结论开发 `agent-service` 的 LangGraph workflow skeleton。
+- 新增 `DiagnosisState`、`log_tool`、`diagnosis_planner_node`、`tool_executor_node`、`observation_analyzer_node`。
+- `/diagnose` 保持现有接口不变，但内部逐步切换到 LangGraph 工作流。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。
