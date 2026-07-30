@@ -183,6 +183,77 @@ feat(ops): add robot realtime monitoring workflow
 
 ## 4. 后端设计注意点
 
+### 4.0 Docker 编译规范
+
+后端开发环境不是 Ubuntu 宿主机。Ubuntu 虚拟机只是 Codex 和 Docker 的运行入口，C++ 后端服务必须在 `dev-env-service` 容器中编译、运行和测试。
+
+Ubuntu 宿主机禁止直接执行：
+
+```text
+cmake
+make
+gcc/g++
+运行 C++ 后端服务
+```
+
+开发容器名称：
+
+```text
+dev-env-service
+```
+
+推荐代码映射：
+
+```text
+Ubuntu 宿主机：
+~/Desktop/projects/RobotOps-AI
+
+Docker 容器：
+/home/dev/workspace/projects/RobotOps-AI
+```
+
+正确编译方式：
+
+```bash
+docker exec dev-env-service bash -lc "
+cd /home/dev/workspace/projects/RobotOps-AI &&
+mkdir -p build &&
+cd build &&
+cmake .. &&
+make -j\$(nproc)
+"
+```
+
+如果项目实际路径不同，先进入容器确认：
+
+```bash
+docker exec -it dev-env-service bash
+pwd
+ls /home/dev/workspace
+ls /home/dev/workspace/projects
+```
+
+如果 `cpp-microservice-kit` 路径未找到，继续在容器内查：
+
+```bash
+cd /home/dev/workspace
+find . -maxdepth 5 -path '*cpp-microservice-kit/CMakeLists.txt'
+```
+
+如果后端 CMake 已支持 `CPP_MICROSERVICE_KIT_DIR`，推荐显式传入：
+
+```bash
+cmake -S . -B build -DCPP_MICROSERVICE_KIT_DIR=<容器内实际cpp-microservice-kit路径>
+cmake --build build -j1
+```
+
+关键原则：
+
+- 优先使用 `cpp-microservice-kit` 已有能力，不要自己重复封装 brpc、protobuf、日志、配置、MySQL、Redis、ES、RabbitMQ。
+- 缺少能力时先检查脚手架是否已有实现，再决定是否补充脚手架。
+- 所有后端路径以 Docker 容器内路径为准。
+- 虚拟机和开发环境容器的登录凭据通过安全渠道获取，不写入仓库文档。
+
 ### 4.1 brpc HTTP JSON
 
 后端接口继续保持 brpc/protobuf 风格，并支持 HTTP JSON 调用。

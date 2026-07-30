@@ -262,6 +262,77 @@ MVP 阶段优先做 Web，不做 Qt。Qt 更适合机器人本体工具或内部
 
 后端开发优先在 Linux / dev 容器中完成。
 
+### 8.1 Docker 开发环境规范
+
+项目后端开发环境不是 Ubuntu 宿主机。
+
+所有 C++ 后端服务开发、编译、运行和测试，必须在 Docker 开发容器中完成。
+
+Codex 运行入口可以是 Ubuntu 虚拟机，但是 Ubuntu 宿主机禁止直接执行：
+
+```text
+cmake
+make
+gcc/g++
+运行 C++ 后端服务
+```
+
+原因：
+
+- 后端依赖由开发容器统一管理。
+- `cpp-microservice-kit`、brpc、protobuf 和基础库路径以容器内路径为准。
+- 避免 Windows、Ubuntu 宿主机、Docker 容器三套环境产生不一致。
+
+开发容器名称：
+
+```text
+dev-env-service
+```
+
+推荐代码映射：
+
+```text
+Ubuntu 宿主机：
+~/Desktop/projects/RobotOps-AI
+
+Docker 容器：
+/home/dev/workspace/projects/RobotOps-AI
+```
+
+如果项目实际放在 `/home/dev/workspace/RobotOps-AI`，以容器内实际路径为准，但必须先进入容器。
+
+正确编译方式：
+
+```bash
+docker exec dev-env-service bash -lc "
+cd /home/dev/workspace/projects/RobotOps-AI &&
+mkdir -p build &&
+cd build &&
+cmake .. &&
+make -j\$(nproc)
+"
+```
+
+如果 `cpp-microservice-kit` 路径未找到，先进入容器检查：
+
+```bash
+docker exec -it dev-env-service bash
+cd /home/dev/workspace
+find . -maxdepth 5 -path '*cpp-microservice-kit/CMakeLists.txt'
+```
+
+如果后端 CMake 支持 `CPP_MICROSERVICE_KIT_DIR`，则显式传入容器内实际路径：
+
+```bash
+docker exec dev-env-service bash -lc "
+cd /home/dev/workspace/projects/RobotOps-AI &&
+cmake -S . -B build -DCPP_MICROSERVICE_KIT_DIR=<容器内实际cpp-microservice-kit路径> &&
+cmake --build build -j1
+"
+```
+
+虚拟机和开发环境容器的登录凭据通过安全渠道获取，不写入仓库文档。
+
 推荐环境分工：
 
 ```text

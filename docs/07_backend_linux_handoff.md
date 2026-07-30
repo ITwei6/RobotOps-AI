@@ -55,6 +55,73 @@ cpp-microservice-kit
 
 先用 `find` 查实际路径，不要假设它一定在某个目录。
 
+## 2.1 Docker 开发环境规范
+
+项目后端开发环境不是 Ubuntu 宿主机。Ubuntu 虚拟机只是 Codex 和 Docker 的运行入口，所有 C++ 后端服务开发、编译、运行和测试都必须进入 Docker 开发容器。
+
+容器名称：
+
+```text
+dev-env-service
+```
+
+Ubuntu 宿主机禁止直接执行：
+
+```text
+cmake
+make
+gcc/g++
+运行 C++ 后端服务
+```
+
+推荐代码映射：
+
+```text
+Ubuntu 宿主机：
+~/Desktop/projects/RobotOps-AI
+
+Docker 容器：
+/home/dev/workspace/projects/RobotOps-AI
+```
+
+如果实际项目路径不同，以容器内实际路径为准。
+
+先确认容器：
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Status}}'
+```
+
+正确编译方式：
+
+```bash
+docker exec dev-env-service bash -lc "
+cd /home/dev/workspace/projects/RobotOps-AI &&
+mkdir -p build &&
+cd build &&
+cmake .. &&
+make -j\$(nproc)
+"
+```
+
+如果 `cpp-microservice-kit` 路径未找到，进入容器查找：
+
+```bash
+docker exec -it dev-env-service bash
+cd /home/dev/workspace
+find . -maxdepth 5 -path '*cpp-microservice-kit/CMakeLists.txt'
+```
+
+如果后端 CMake 支持 `CPP_MICROSERVICE_KIT_DIR`，推荐显式传入：
+
+```bash
+cd /home/dev/workspace/projects/RobotOps-AI
+cmake -S . -B build -DCPP_MICROSERVICE_KIT_DIR=<容器内实际cpp-microservice-kit路径>
+cmake --build build -j1
+```
+
+虚拟机和开发环境容器的登录凭据通过安全渠道获取，不写入仓库文档。
+
 ## 3. 当前最先要修的问题
 
 当前 Linux 下执行：
@@ -395,4 +462,3 @@ Linux Codex 进入后，第一件事不是继续写新服务，而是：
 8. 用 curl 验证四个接口。
 9. 更新 `CHANGES.md`。
 10. commit + push。
-

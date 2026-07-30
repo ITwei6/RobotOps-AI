@@ -217,3 +217,32 @@
 是否已提交 Git：
 
 - 是。已纳入阶段 1 Linux 交接文档提交。
+
+## 2026-07-30 阶段 1 补充：Docker 容器编译规范
+
+修改内容：
+
+- 在 `AGENTS.md` 中补充 Docker 开发环境强制规范，明确后端不能在 Ubuntu 宿主机直接编译。
+- 在 `docs/06_development_guide.md` 中补充 `dev-env-service` 容器编译命令、路径映射、脚手架查找方式。
+- 在 `docs/07_backend_linux_handoff.md` 中补充给 Linux Codex 使用的容器编译流程。
+- 明确虚拟机和开发环境容器凭据不写入仓库文档。
+
+原因：
+
+- 后端依赖 `cpp-microservice-kit`、brpc、protobuf 和容器内统一基础库，必须通过 Docker 开发容器保证环境一致。
+- 后续每个子服务都是独立开发阶段，需要统一编译入口，避免另一个 Codex 窗口在 Ubuntu 宿主机误执行 `cmake` 或 `make`。
+
+影响范围：
+
+- `AGENTS.md`
+- `docs/06_development_guide.md`
+- `docs/07_backend_linux_handoff.md`
+- `CHANGES.md`
+
+下一步：
+
+- Linux Codex 进入 `dev-env-service` 容器后，先修复 `CPP_MICROSERVICE_KIT_DIR` 路径探测，再继续编译验证 log-service。
+
+是否已提交 Git：
+
+- 是。已纳入 Docker 容器编译规范文档提交。
