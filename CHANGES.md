@@ -354,3 +354,85 @@ cmake --build build -j1
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-30 阶段 3：agent-service 规则模板诊断服务
+
+修改内容：
+
+- 新增 `agent_service/requirements.txt`。
+- 新增 Python 包 `agent_service/app/`。
+- 新增 FastAPI 服务入口 `agent_service/app/main.py`。
+- 新增 Pydantic 请求响应模型 `agent_service/app/models.py`。
+- 新增规则模板诊断核心 `agent_service/app/rules.py`。
+- 新增单元测试 `agent_service/tests/test_rules.py`。
+- 新增 `agent_service/README.md`，说明当前 Agent 技术路线和后续 LangGraph / LangChain 演进方式。
+- 更新 `AGENTS.md` 当前阶段说明。
+
+原因：
+
+- RobotOps AI 第一阶段需要把 `Bug -> 日志上下文 -> Agent -> 诊断报告` 跑通。
+- 当前真实排障重点是 interaction 研发 Bug，第一版 Agent 应优先基于明确日志证据和源码位置输出结构化报告，而不是直接接大模型生成不可追溯文本。
+- 规则模板版可以先覆盖 `CheckTouch`、self check、低电量/充电、TaskFactory、WorkerManager、ActionSkill、MoveSkill 等 interaction 常见链路。
+
+影响范围：
+
+- `agent_service/`
+- `AGENTS.md`
+- `CHANGES.md`
+
+当前能力：
+
+- `GET /health` 返回服务健康状态。
+- `POST /diagnose` 接收 Bug 上下文、日志证据、源码证据、历史案例和知识文本。
+- 命中规则时输出结构化诊断报告：
+  - `summary`
+  - `suspected_module`
+  - `possible_causes`
+  - `evidence_logs`
+  - `evidence_sources`
+  - `recommended_actions`
+  - `confidence`
+  - `questions_for_human`
+- 证据不足时输出低置信度报告，不编造确定结论。
+
+当前限制：
+
+- 当前是 `rule-template-v1`，尚未接入 LLM。
+- 当前尚未接入 LangGraph / LangChain。
+- 当前尚未主动调用 `log-service` 或源码检索，只处理调用方传入的日志证据和源码证据。
+
+验证结果：
+
+- `dev-env-service` 容器原本没有 `pip`，已通过 `apt-get install -y python3-pip` 安装。
+- 默认 PyPI 下载 FastAPI 超时，已使用清华 PyPI 镜像安装：
+
+```text
+python3 -m pip install --default-timeout 180 -i https://pypi.tuna.tsinghua.edu.cn/simple -r agent_service/requirements.txt
+```
+
+- 已在容器内执行单元测试：
+
+```text
+python3 -m unittest discover -s agent_service/tests
+```
+
+- 测试结果：2 个测试通过。
+- 已验证 FastAPI app 可导入。
+- 已启动：
+
+```text
+python3 -m uvicorn agent_service.app.main:app --host 0.0.0.0 --port 9601
+```
+
+- `GET /health` 验证通过。
+- `POST /diagnose` 使用 interaction 触摸拦截日志验证通过，输出 `suspected_module=interaction`、`T1Checker::CheckTouch` 源码提示和 `confidence=0.92`。
+
+下一步：
+
+- 将 `ticket-diagnosis-service` 编排调用 `agent-service`。
+- 给 `agent-service` 增加日志检索工具，从 `log-service` 拉取 occurred_time 前后上下文。
+- 后续引入 LangGraph 编排诊断流程，LangChain 用作日志检索、源码检索、知识库/RAG 和历史案例工具封装。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。

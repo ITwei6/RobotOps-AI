@@ -291,16 +291,17 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 2：ticket-diagnosis-service 初版开发
+阶段 3：agent-service 规则模板初版开发
 ```
 
 已完成：
 
 - `log-service` 初版：导入已解压日志目录、查询日志、提取上下文、列出日志文件。
 - `ticket-diagnosis-service` 初版：创建 Bug 单、创建诊断任务、保存和查询诊断报告。
+- `agent-service` 初版：FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
 
 当前限制：
 
 - 后端服务当前使用内存存储，尚未接入 MySQL / Elasticsearch / Redis / RabbitMQ。
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
-- Agent 服务尚未接入，诊断报告由后续 agent-service 生成或由接口保存。
+- `ticket-diagnosis-service` 尚未编排调用 `agent-service`，当前需要调用方分别调用两个服务。

@@ -402,9 +402,9 @@ git remote add origin <repo>
 
 - 阶段 1：`log-service` 初版，支持已解压机器人日志目录导入、查询、上下文和文件列表。
 - 阶段 2：`ticket-diagnosis-service` 初版，支持 Bug 单、诊断任务和诊断报告的内存版接口。
+- 阶段 3：`agent-service` 初版，支持 FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
 
 下一步应该继续：
 
-- 开发 `agent-service`，提供 `/health` 和 `/diagnose`，先基于规则模板生成带证据的结构化诊断报告。
 - 将 `ticket-diagnosis-service` 与 `log-service`、`agent-service` 串成 Bug 诊断闭环。
 - 后续再接入 MySQL、Elasticsearch、Redis 和 RabbitMQ。
