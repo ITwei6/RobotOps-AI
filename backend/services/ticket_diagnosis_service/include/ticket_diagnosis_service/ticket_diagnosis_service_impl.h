@@ -1,13 +1,14 @@
 #pragma once
 
 #include "ticket_diagnosis.pb.h"
+#include "ticket_diagnosis_service/agent_client.h"
 #include "ticket_diagnosis_service/ticket_diagnosis_store.h"
 
 namespace robotops::ticket_diagnosis_service {
 
 class TicketDiagnosisServiceImpl : public robotops::ticket_diagnosis::TicketDiagnosisService {
 public:
-    explicit TicketDiagnosisServiceImpl(TicketDiagnosisStore* store);
+    TicketDiagnosisServiceImpl(TicketDiagnosisStore* store, AgentClient* agent_client);
 
     void CreateBugTicket(::google::protobuf::RpcController* controller,
         const robotops::ticket_diagnosis::CreateBugTicketRequest* request,
@@ -44,8 +45,14 @@ public:
         robotops::ticket_diagnosis::GetDiagnosisReportResponse* response,
         ::google::protobuf::Closure* done) override;
 
+    void RunDiagnosis(::google::protobuf::RpcController* controller,
+        const robotops::ticket_diagnosis::RunDiagnosisRequest* request,
+        robotops::ticket_diagnosis::RunDiagnosisResponse* response,
+        ::google::protobuf::Closure* done) override;
+
 private:
     TicketDiagnosisStore* store_;
+    AgentClient* agent_client_;
 };
 
 } // namespace robotops::ticket_diagnosis_service

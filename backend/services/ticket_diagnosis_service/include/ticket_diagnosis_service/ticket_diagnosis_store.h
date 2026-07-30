@@ -37,6 +37,11 @@ public:
     std::optional<robotops::ticket_diagnosis::DiagnosisTask> getDiagnosisTask(
         const std::string& task_id) const;
 
+    std::optional<robotops::ticket_diagnosis::DiagnosisTask> updateDiagnosisTask(
+        const std::string& task_id,
+        robotops::common::TaskStatus status,
+        const std::string& message);
+
     robotops::ticket_diagnosis::DiagnosisReport saveReport(
         const robotops::ticket_diagnosis::DiagnosisReport& request_report);
 

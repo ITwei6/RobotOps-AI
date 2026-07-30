@@ -106,6 +106,21 @@ std::optional<robotops::ticket_diagnosis::DiagnosisTask> TicketDiagnosisStore::g
     return it->second;
 }
 
+std::optional<robotops::ticket_diagnosis::DiagnosisTask> TicketDiagnosisStore::updateDiagnosisTask(
+    const std::string& task_id,
+    robotops::common::TaskStatus status,
+    const std::string& message) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = tasks_.find(task_id);
+    if (it == tasks_.end()) {
+        return std::nullopt;
+    }
+    it->second.set_status(status);
+    it->second.set_message(message);
+    it->second.set_updated_at(currentUnixMillis());
+    return it->second;
+}
+
 robotops::ticket_diagnosis::DiagnosisReport TicketDiagnosisStore::saveReport(
     const robotops::ticket_diagnosis::DiagnosisReport& request_report) {
     std::lock_guard<std::mutex> lock(mutex_);

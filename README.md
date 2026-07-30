@@ -268,6 +268,7 @@ docs/04_mvp_plan.md
 docs/05_web_frontend_design.md
 docs/06_development_guide.md
 docs/07_backend_linux_handoff.md
+docs/08_agent_service_focus.md
 ```
 
 后续开发必须先阅读：
@@ -291,7 +292,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 3：agent-service 规则模板初版开发
+阶段 4：Agent 诊断闭环编排
 ```
 
 已完成：
@@ -299,9 +300,15 @@ CHANGES.md
 - `log-service` 初版：导入已解压日志目录、查询日志、提取上下文、列出日志文件。
 - `ticket-diagnosis-service` 初版：创建 Bug 单、创建诊断任务、保存和查询诊断报告。
 - `agent-service` 初版：FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
+- `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
 
 当前限制：
 
 - 后端服务当前使用内存存储，尚未接入 MySQL / Elasticsearch / Redis / RabbitMQ。
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
-- `ticket-diagnosis-service` 尚未编排调用 `agent-service`，当前需要调用方分别调用两个服务。
+- `RunDiagnosis` 当前需要调用方传入日志证据和源码证据，尚未自动从 `log-service` 拉取上下文。
+
+后续开发重心：
+
+- 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
+- Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。

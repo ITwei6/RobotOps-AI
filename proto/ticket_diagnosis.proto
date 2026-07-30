@@ -154,6 +154,19 @@ message GetDiagnosisReportResponse {
   DiagnosisReport report = 2;
 }
 
+message RunDiagnosisRequest {
+  string bug_id = 1;
+  repeated DiagnosisLogEvidence logs = 2;
+  repeated DiagnosisSourceEvidence sources = 3;
+  string agent_endpoint = 4;
+}
+
+message RunDiagnosisResponse {
+  robotops.common.CommonResponse response = 1;
+  DiagnosisTask task = 2;
+  DiagnosisReport report = 3;
+}
+
 service TicketDiagnosisService {
   rpc CreateBugTicket(CreateBugTicketRequest) returns (CreateBugTicketResponse);
   rpc GetBugTicket(GetBugTicketRequest) returns (GetBugTicketResponse);
@@ -162,4 +175,5 @@ service TicketDiagnosisService {
   rpc GetDiagnosisTask(GetDiagnosisTaskRequest) returns (GetDiagnosisTaskResponse);
   rpc SaveDiagnosisReport(SaveDiagnosisReportRequest) returns (SaveDiagnosisReportResponse);
   rpc GetDiagnosisReport(GetDiagnosisReportRequest) returns (GetDiagnosisReportResponse);
+  rpc RunDiagnosis(RunDiagnosisRequest) returns (RunDiagnosisResponse);
 }

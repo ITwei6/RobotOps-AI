@@ -15,6 +15,7 @@
 7. `docs/04_mvp_plan.md`
 8. `docs/05_web_frontend_design.md`
 9. `docs/06_development_guide.md`
+10. `docs/08_agent_service_focus.md`
 
 如果涉及旧项目经验，继续阅读：
 
@@ -308,6 +309,8 @@ Milvus/Chroma:
 
 ## 5. Agent 设计注意点
 
+从阶段 3 开始，后续开发重点转向 `agent-service`。C++ 服务主要负责平台入口、日志、任务和报告保存，Agent 才是 RobotOps AI 的核心诊断能力。
+
 Agent 的输入不是一句简单问题，而是完整诊断上下文：
 
 ```text
@@ -403,8 +406,11 @@ git remote add origin <repo>
 - 阶段 1：`log-service` 初版，支持已解压机器人日志目录导入、查询、上下文和文件列表。
 - 阶段 2：`ticket-diagnosis-service` 初版，支持 Bug 单、诊断任务和诊断报告的内存版接口。
 - 阶段 3：`agent-service` 初版，支持 FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
+- 阶段 4：`ticket-diagnosis-service` 支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存报告。
 
 下一步应该继续：
 
-- 将 `ticket-diagnosis-service` 与 `log-service`、`agent-service` 串成 Bug 诊断闭环。
+- 优先增强 `agent-service`，不要过早继续拆分大量 C++ 服务。
+- 让 `agent-service` 主动调用 `log-service` 获取 occurred_time 前后日志上下文。
+- 增加 interaction 源码检索、历史案例和知识库/RAG。
 - 后续再接入 MySQL、Elasticsearch、Redis 和 RabbitMQ。

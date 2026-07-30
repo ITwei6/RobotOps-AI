@@ -28,8 +28,9 @@ bool isValidRobotType(robotops::common::RobotType robot_type) {
 
 } // namespace
 
-TicketDiagnosisServiceImpl::TicketDiagnosisServiceImpl(TicketDiagnosisStore* store)
-    : store_(store) {
+TicketDiagnosisServiceImpl::TicketDiagnosisServiceImpl(TicketDiagnosisStore* store, AgentClient* agent_client)
+    : store_(store),
+      agent_client_(agent_client) {
 }
 
 void TicketDiagnosisServiceImpl::CreateBugTicket(::google::protobuf::RpcController* controller,
@@ -199,6 +200,50 @@ void TicketDiagnosisServiceImpl::GetDiagnosisReport(::google::protobuf::RpcContr
     }
 
     *response->mutable_report() = report.value();
+    setResponse(response->mutable_response(), 0, "ok");
+}
+
+void TicketDiagnosisServiceImpl::RunDiagnosis(::google::protobuf::RpcController* controller,
+    const robotops::ticket_diagnosis::RunDiagnosisRequest* request,
+    robotops::ticket_diagnosis::RunDiagnosisResponse* response,
+    ::google::protobuf::Closure* done) {
+    (void)controller;
+    brpc::ClosureGuard done_guard(done);
+
+    if (request->bug_id().empty()) {
+        setResponse(response->mutable_response(), 400, "bug_id is required");
+        return;
+    }
+
+    const auto ticket = store_->getTicket(request->bug_id());
+    if (!ticket.has_value()) {
+        setResponse(response->mutable_response(), 404, "bug ticket not found");
+        return;
+    }
+
+    auto task = store_->createDiagnosisTask(request->bug_id(), "agent-service");
+    *response->mutable_task() = task;
+
+    const auto agent_result = agent_client_->diagnose(ticket.value(), task, *request);
+    if (!agent_result.ok) {
+        const std::string message = "agent-service diagnose failed: " + agent_result.message;
+        const auto failed_task = store_->updateDiagnosisTask(
+            task.task_id(),
+            robotops::common::TASK_STATUS_FAILED,
+            message);
+        if (failed_task.has_value()) {
+            *response->mutable_task() = failed_task.value();
+        }
+        setResponse(response->mutable_response(), 502, message);
+        return;
+    }
+
+    const auto report = store_->saveReport(agent_result.report);
+    *response->mutable_report() = report;
+    const auto updated_task = store_->getDiagnosisTask(task.task_id());
+    if (updated_task.has_value()) {
+        *response->mutable_task() = updated_task.value();
+    }
     setResponse(response->mutable_response(), 0, "ok");
 }
 

@@ -428,7 +428,47 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 3：Python agent-service 开发阶段
+阶段 4：Agent 诊断闭环编排阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版和 `agent-service` 规则模板初版。每个子服务视为一个独立阶段，阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版，以及 `ticket-diagnosis-service -> agent-service` 同步诊断编排。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+
+## 13. 后续开发重心
+
+从当前阶段开始，RobotOps AI 的研发重点转向 `agent-service`。
+
+必须明确：
+
+- 本项目的核心价值在 Agent 诊断能力，不在继续堆叠很多 C++ 后端服务。
+- C++ 服务主要承担 Bug 单、日志包、诊断任务、报告保存和接口编排。
+- `agent-service` 才是后续重点，要围绕真实 interaction Bug 排障流程持续增强。
+
+后续优先建设 Agent 侧模块：
+
+```text
+Bug 上下文解析
+日志证据提取
+interaction 源码检索
+T/Q 机型规则理解
+历史案例检索
+知识库 / RAG
+诊断工作流编排
+置信度与证据校验
+结构化报告生成
+```
+
+LangGraph / LangChain 使用原则：
+
+- LangGraph 用于编排诊断流程。
+- LangChain 用于封装日志检索、源码检索、知识库/RAG、历史案例工具。
+- RAG 是 Agent 的工具，不等于 Agent 本身。
+- 没有日志或源码证据时，Agent 必须输出低置信度，不能编造结论。
+
+后续开发应优先把 interaction 真实 Bug 修复经验沉淀到 Agent 能力中，例如：
+
+- `CheckTouch` / `CheckMove` / self check 拦截。
+- `TaskFactory` 是否创建任务。
+- `TaskDescription` 是否生成正确 `SkillParamList`。
+- `WorkerManager` 是否拒绝、抢占或并行执行。
+- `ActionSkill` 是否成功调用 MC `SetMcAction`。
+- `MoveSkill` 是否成功发布速度并收到 odom / MC 状态反馈。

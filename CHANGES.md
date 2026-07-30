@@ -436,3 +436,89 @@ python3 -m uvicorn agent_service.app.main:app --host 0.0.0.0 --port 9601
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-30 阶段 4：Agent 诊断闭环编排
+
+修改内容：
+
+- 在 `AGENTS.md` 中新增“后续开发重心”，明确后续重点转向 `agent-service`。
+- 新增 `docs/08_agent_service_focus.md`，记录 Agent 侧模块规划、LangGraph / LangChain 使用边界、interaction 优先知识和近期优先级。
+- 在 `README.md` 和 `docs/06_development_guide.md` 中补充 Agent 优先方向。
+- 扩展 `proto/ticket_diagnosis.proto`，新增 `RunDiagnosis` RPC。
+- 新增 `backend/services/ticket_diagnosis_service` 的 `AgentClient`，使用 HTTP JSON 调用 FastAPI `agent-service`。
+- `ticket-diagnosis-service` 新增同步诊断编排：
+  - 查询 Bug 单。
+  - 创建诊断任务。
+  - 调用 `agent-service /diagnose`。
+  - 将 Agent 返回的结构化报告保存到内存存储。
+  - 更新诊断任务状态。
+- `ROBOTOPS_AGENT_SERVICE_URL` 环境变量用于配置 Agent 地址，默认 `http://127.0.0.1:9601`。
+
+原因：
+
+- 用户明确说明本项目后续重点是 Agent 模块，不是继续堆叠后端服务。
+- RobotOps AI 的核心价值在 Agent 能否复现开发工程师分析 interaction Bug 的过程。
+- C++ 服务应主要负责 Bug、日志、任务和报告的入口与编排，Agent 侧负责日志证据、源码证据、历史案例、知识库/RAG 和诊断工作流。
+- 阶段 3 虽然已有 agent-service，但 `ticket-diagnosis-service` 还不能真正调用它，因此需要补齐最小诊断闭环。
+
+影响范围：
+
+- `AGENTS.md`
+- `README.md`
+- `docs/06_development_guide.md`
+- `docs/08_agent_service_focus.md`
+- `proto/ticket_diagnosis.proto`
+- `backend/services/ticket_diagnosis_service/`
+- `CHANGES.md`
+
+当前能力：
+
+- `TicketDiagnosisService.RunDiagnosis` 可接收 Bug ID、日志证据和源码证据。
+- 服务会同步调用 `agent-service /diagnose`。
+- Agent 返回的报告会保存为 `DiagnosisReport`。
+- 诊断任务状态会从 `PENDING` 更新为 `SUCCEEDED` 或 `FAILED`。
+
+当前限制：
+
+- `RunDiagnosis` 当前仍需要调用方传入日志证据和源码证据。
+- `agent-service` 尚未主动调用 `log-service` 获取 occurred_time 时间窗口上下文。
+- `agent-service` 尚未实现 interaction 源码自动检索、历史案例检索和 LangGraph 工作流。
+
+验证结果：
+
+- 已在 `dev-env-service` 容器内执行 C++ 构建：
+
+```text
+cmake --build build -j1
+```
+
+- `ticket_diagnosis_service` 编译成功。
+- 复用 `agent-service` 端口 `9601`。
+- 启动 `ticket-diagnosis-service`：
+
+```text
+ROBOTOPS_TICKET_DIAGNOSIS_RPC_PORT=9502
+ROBOTOPS_AGENT_SERVICE_URL=http://127.0.0.1:9601
+```
+
+- `CreateBugTicket` 创建 T 型 interaction Bug 成功。
+- `RunDiagnosis` 使用 interaction 触摸拦截日志调用成功。
+- `RunDiagnosis` 返回 `diag-task-000001`，状态为 `TASK_STATUS_SUCCEEDED`。
+- 保存报告 `diag-report-000001` 成功，报告包含：
+  - `suspected_module=interaction`
+  - `T1Checker::CheckTouch` 源码证据提示
+  - 日志证据 `interaction.log:3`
+  - `confidence=0.92`
+- `GetDiagnosisReport` 按 `bug_id` 查询保存报告成功。
+
+下一步：
+
+- 继续重点开发 `agent-service`。
+- 增加 `log_tool`，让 Agent 主动从 `log-service` 获取 Bug 发生时间前后日志上下文。
+- 增加 `source_tool`，让 Agent 自动检索 interaction 源码。
+- 将真实 interaction Bug 分析文档沉淀为历史案例。
+- 后续引入 LangGraph 编排诊断节点，LangChain 只作为工具封装层。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。
