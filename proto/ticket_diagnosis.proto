@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package robotops.ticket_diagnosis;
+
+option cc_generic_services = true;
+
+import "common.proto";
+
+message BugTicket {
+  string bug_id = 1;
+  string title = 2;
+  string description = 3;
+  robotops.common.RobotType robot_type = 4;
+  string robot_sn = 5;
+  string main_module = 6;
+  int64 occurred_time = 7;
+  string software_version = 8;
+  string branch = 9;
+  string commit = 10;
+  string log_package_id = 11;
+  string source_repo = 12;
+  string assigned_to = 13;
+  string status = 14;
+  int64 created_at = 15;
+  int64 updated_at = 16;
+}
+
+message DiagnosisTask {
+  string task_id = 1;
+  string bug_id = 2;
+  robotops.common.TaskStatus status = 3;
+  string agent_request_id = 4;
+  string message = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
+
+message DiagnosisLogEvidence {
+  string module_name = 1;
+  string file_name = 2;
+  int32 line_no = 3;
+  int64 log_time = 4;
+  string log_level = 5;
+  string message = 6;
+  string raw_line = 7;
+}
+
+message DiagnosisSourceEvidence {
+  string repo = 1;
+  string branch = 2;
+  string commit = 3;
+  string file_path = 4;
+  string function_name = 5;
+  string matched_text = 6;
+  string snippet = 7;
+}
+
+message DiagnosisReport {
+  string report_id = 1;
+  string task_id = 2;
+  string bug_id = 3;
+  robotops.common.TaskStatus status = 4;
+  string suspected_module = 5;
+  string summary = 6;
+  repeated string possible_causes = 7;
+  repeated DiagnosisLogEvidence evidence_logs = 8;
+  repeated DiagnosisSourceEvidence evidence_sources = 9;
+  repeated string recommended_actions = 10;
+  double confidence = 11;
+  repeated string questions_for_human = 12;
+  int64 created_at = 13;
+  int64 updated_at = 14;
+}
+
+message CreateBugTicketRequest {
+  string title = 1;
+  string description = 2;
+  robotops.common.RobotType robot_type = 3;
+  string robot_sn = 4;
+  string main_module = 5;
+  int64 occurred_time = 6;
+  string software_version = 7;
+  string branch = 8;
+  string commit = 9;
+  string log_package_id = 10;
+  string source_repo = 11;
+  string assigned_to = 12;
+}
+
+message CreateBugTicketResponse {
+  robotops.common.CommonResponse response = 1;
+  BugTicket ticket = 2;
+}
+
+message GetBugTicketRequest {
+  string bug_id = 1;
+}
+
+message GetBugTicketResponse {
+  robotops.common.CommonResponse response = 1;
+  BugTicket ticket = 2;
+}
+
+message ListBugTicketsRequest {
+  robotops.common.PageRequest page = 1;
+  robotops.common.RobotType robot_type = 2;
+  string main_module = 3;
+  string status = 4;
+  string keyword = 5;
+}
+
+message ListBugTicketsResponse {
+  robotops.common.CommonResponse response = 1;
+  robotops.common.PageResponse page = 2;
+  repeated BugTicket tickets = 3;
+}
+
+message CreateDiagnosisTaskRequest {
+  string bug_id = 1;
+  string agent_request_id = 2;
+}
+
+message CreateDiagnosisTaskResponse {
+  robotops.common.CommonResponse response = 1;
+  DiagnosisTask task = 2;
+}
+
+message GetDiagnosisTaskRequest {
+  string task_id = 1;
+}
+
+message GetDiagnosisTaskResponse {
+  robotops.common.CommonResponse response = 1;
+  DiagnosisTask task = 2;
+}
+
+message SaveDiagnosisReportRequest {
+  DiagnosisReport report = 1;
+}
+
+message SaveDiagnosisReportResponse {
+  robotops.common.CommonResponse response = 1;
+  DiagnosisReport report = 2;
+}
+
+message GetDiagnosisReportRequest {
+  string report_id = 1;
+  string task_id = 2;
+  string bug_id = 3;
+}
+
+message GetDiagnosisReportResponse {
+  robotops.common.CommonResponse response = 1;
+  DiagnosisReport report = 2;
+}
+
+service TicketDiagnosisService {
+  rpc CreateBugTicket(CreateBugTicketRequest) returns (CreateBugTicketResponse);
+  rpc GetBugTicket(GetBugTicketRequest) returns (GetBugTicketResponse);
+  rpc ListBugTickets(ListBugTicketsRequest) returns (ListBugTicketsResponse);
+  rpc CreateDiagnosisTask(CreateDiagnosisTaskRequest) returns (CreateDiagnosisTaskResponse);
+  rpc GetDiagnosisTask(GetDiagnosisTaskRequest) returns (GetDiagnosisTaskResponse);
+  rpc SaveDiagnosisReport(SaveDiagnosisReportRequest) returns (SaveDiagnosisReportResponse);
+  rpc GetDiagnosisReport(GetDiagnosisReportRequest) returns (GetDiagnosisReportResponse);
+}

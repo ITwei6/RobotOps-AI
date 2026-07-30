@@ -246,3 +246,111 @@
 是否已提交 Git：
 
 - 是。已纳入 Docker 容器编译规范文档提交。
+
+## 2026-07-30 阶段 1 补充：log-service 容器编译验证与构建修复
+
+修改内容：
+
+- 将顶层 `CMakeLists.txt` 中的 `CPP_MICROSERVICE_KIT_DIR` 改为 CMake cache path，并支持多个候选路径自动探测。
+- 新增 `ROBOTOPS_USE_FULL_CPP_MICROSERVICE_KIT` 构建选项。
+- 默认使用 `cpp-microservice-kit` 的 `log.cc` 和 `rpc.cc` 组成最小脚手架目标，避免当前 log-service 被 FFmpeg、ODB、MQTT 等未使用依赖阻塞。
+- 调整 `log-service` 链接目标为 `${ROBOTOPS_SCAFFOLD_TARGET}`。
+- 在 `dev-env-service` Docker 容器内完成 `log_service` 编译和 HTTP JSON 接口验证。
+
+原因：
+
+- `cpp-microservice-kit` 当前全量 CMake 会检查 MQ、ES、FastDFS、FFmpeg、ODB、Redis、MQTT 等依赖，其中容器缺少 `avcodec`，导致只依赖日志和 RPC 的 log-service 也无法配置。
+- 当前阶段应先保证日志包解析服务在统一容器环境中可编译、可启动、可验证。
+- 后续如果服务需要全量脚手架能力，可以打开 `ROBOTOPS_USE_FULL_CPP_MICROSERVICE_KIT=ON` 或补齐容器依赖。
+
+影响范围：
+
+- `CMakeLists.txt`
+- `backend/services/log_service/CMakeLists.txt`
+
+验证结果：
+
+- 已在 `dev-env-service` 容器内执行：
+
+```text
+cmake -S . -B build -DCPP_MICROSERVICE_KIT_DIR=/home/dev/workspace/cpp-microservice-kit
+cmake --build build -j1
+```
+
+- `log_service` 编译成功。
+- `ROBOTOPS_LOG_RPC_PORT=9501` 启动成功。
+- `ImportLogPackage` 导入 `samples/robot_20260730` 成功，识别 4 个日志文件和 10 条日志。
+- `QueryLogs` 按 `interaction` 模块查询成功。
+- `QueryLogs` 按 `PASSIVE_DEFAULT` 关键词查询成功，命中 `interaction` 和 `mc` 日志。
+- `GetLogContext` 按中心时间窗口查询成功。
+- `ListLogFiles` 查询日志文件列表成功。
+
+当前限制：
+
+- 默认构建当前只链接 log/rpc 最小脚手架源码，暂未启用全量脚手架依赖。
+- log-service 仍是内存索引，尚未接入 Elasticsearch / MySQL / Redis / RabbitMQ。
+
+下一步：
+
+- 开发 `ticket-diagnosis-service`，建立 Bug 单、诊断任务和报告保存入口。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。
+
+## 2026-07-30 阶段 2：ticket-diagnosis-service Bug 与诊断任务服务
+
+修改内容：
+
+- 新增 `proto/ticket_diagnosis.proto`。
+- 新增 `backend/services/ticket_diagnosis_service/` 子服务。
+- 实现 `TicketDiagnosisService.CreateBugTicket`，支持创建研发 Bug 单。
+- 实现 `TicketDiagnosisService.GetBugTicket` 和 `ListBugTickets`，支持按机型、主模块、状态和关键词查询。
+- 实现 `TicketDiagnosisService.CreateDiagnosisTask` 和 `GetDiagnosisTask`，支持创建诊断任务并预留 `agent_request_id`。
+- 实现 `TicketDiagnosisService.SaveDiagnosisReport` 和 `GetDiagnosisReport`，支持保存和查询结构化诊断报告。
+- 诊断报告结构包含疑似责任模块、摘要、可能原因、日志证据、源码证据、建议、置信度和人工确认问题。
+- 更新 `README.md`、`docs/06_development_guide.md` 和 `AGENTS.md` 的当前阶段说明。
+
+原因：
+
+- 真实研发流程从飞书 Bug 工单开始，ticket-diagnosis-service 是把 Bug 描述、发生时间、机器人类型、主模块、日志包和源码仓库串起来的入口。
+- 第一阶段 log-service 只解决日志包解析和查询，下一步必须建立 Bug 单和诊断任务模型，才能形成 `Bug -> 日志上下文 -> Agent -> 诊断报告` 的闭环。
+- MVP 阶段不强制要求 `robot_sn`，但接口保留字段以支持后续部署运维阶段。
+
+影响范围：
+
+- `CMakeLists.txt`
+- `proto/ticket_diagnosis.proto`
+- `backend/services/ticket_diagnosis_service/`
+- `README.md`
+- `docs/06_development_guide.md`
+- `AGENTS.md`
+- `CHANGES.md`
+
+当前限制：
+
+- 当前 Bug、诊断任务和诊断报告保存在服务内存中，服务重启后数据丢失。
+- 当前只预留 Agent 调用字段，尚未真正调用 Python `agent-service`。
+- 当前尚未接入 MySQL、Redis、RabbitMQ。
+
+验证结果：
+
+- 已在 `dev-env-service` 容器内完成 `ticket_diagnosis_service` 编译。
+- `ROBOTOPS_TICKET_DIAGNOSIS_RPC_PORT=9502` 启动成功。
+- `CreateBugTicket` 创建 `interaction` 主模块的 T 型机器人 Bug 成功。
+- `ListBugTickets` 按 `main_module=interaction` 和关键词查询成功。
+- `GetBugTicket` 查询 Bug 详情成功。
+- `CreateDiagnosisTask` 创建 `diag-task-000001` 成功，状态为 `TASK_STATUS_PENDING`。
+- `SaveDiagnosisReport` 保存带 interaction 日志证据和源码证据的报告成功。
+- `GetDiagnosisReport` 按 `bug_id` 查询报告成功。
+- `GetDiagnosisTask` 验证报告保存后任务状态更新为 `TASK_STATUS_SUCCEEDED`。
+
+下一步：
+
+- 开发 Python `agent-service`，提供 `/health` 和 `/diagnose`。
+- 第一版 Agent 先基于 Bug 描述、机器人类型、主模块、日志证据和 interaction 源码规则生成结构化诊断报告。
+- 后续再由 `ticket-diagnosis-service` 编排调用 agent-service，并将报告落库。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。

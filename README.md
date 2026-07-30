@@ -254,9 +254,9 @@ source-index-service
 
 Web 视觉和产品组织方式参考 `qinshihu/itops-agent-platform` 这类运维 Agent 平台：重点是清晰呈现“输入、分析、执行、证据、结论”的闭环，而不是做一个普通表格后台。
 
-## 文档优先
+## 开发状态
 
-当前阶段先完成文档设计，再进入开发。
+当前已进入后端开发阶段。
 
 已有文档：
 
@@ -291,7 +291,16 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 0：项目重新定位和文档设计
+阶段 2：ticket-diagnosis-service 初版开发
 ```
 
-当前只完善文档，不写业务代码。
+已完成：
+
+- `log-service` 初版：导入已解压日志目录、查询日志、提取上下文、列出日志文件。
+- `ticket-diagnosis-service` 初版：创建 Bug 单、创建诊断任务、保存和查询诊断报告。
+
+当前限制：
+
+- 后端服务当前使用内存存储，尚未接入 MySQL / Elasticsearch / Redis / RabbitMQ。
+- 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
+- Agent 服务尚未接入，诊断报告由后续 agent-service 生成或由接口保存。

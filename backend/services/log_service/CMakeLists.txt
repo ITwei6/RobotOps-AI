@@ -10,6 +10,5 @@ target_include_directories(log_service
 
 target_link_libraries(log_service
     PRIVATE
-        tew_scaffold
+        ${ROBOTOPS_SCAFFOLD_TARGET}
         robotops_proto)
-

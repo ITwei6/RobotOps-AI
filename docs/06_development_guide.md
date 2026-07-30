@@ -1,6 +1,6 @@
 # 开发交接指导
 
-本文档用于指导后续开发阶段。当前阶段仍然只做文档设计，不写业务代码。
+本文档用于指导后续开发阶段。当前项目已进入后端服务开发阶段。
 
 ## 1. 开发前阅读顺序
 
@@ -396,14 +396,15 @@ git remote add origin <repo>
 
 ## 8. 当前状态
 
-当前仍处于文档阶段。
+当前已进入后端开发阶段。
 
-下一步应该继续完善：
+已完成：
 
-- 需求文档
-- 架构设计
-- 数据模型
-- API/proto 设计文档
-- Web 前端设计
+- 阶段 1：`log-service` 初版，支持已解压机器人日志目录导入、查询、上下文和文件列表。
+- 阶段 2：`ticket-diagnosis-service` 初版，支持 Bug 单、诊断任务和诊断报告的内存版接口。
 
-完成这些文档并提交后，再进入代码开发阶段。
+下一步应该继续：
+
+- 开发 `agent-service`，提供 `/health` 和 `/diagnose`，先基于规则模板生成带证据的结构化诊断报告。
+- 将 `ticket-diagnosis-service` 与 `log-service`、`agent-service` 串成 Bug 诊断闭环。
+- 后续再接入 MySQL、Elasticsearch、Redis 和 RabbitMQ。

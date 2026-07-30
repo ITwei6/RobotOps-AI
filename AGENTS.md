@@ -428,7 +428,7 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 1：后端 log-service 开发阶段
+阶段 2：后端 ticket-diagnosis-service 开发阶段
 ```
 
-从本阶段开始进入后端开发。每个子服务视为一个独立阶段，阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版和 `ticket-diagnosis-service` 初版。每个子服务视为一个独立阶段，阶段完成后必须更新 `CHANGES.md` 并提交 Git。
