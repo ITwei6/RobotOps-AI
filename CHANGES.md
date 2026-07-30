@@ -186,3 +186,34 @@
 是否已提交 Git：
 
 - 是。已纳入阶段 1 log-service 提交。
+
+## 2026-07-30 阶段 1 补充：Linux 后端开发交接
+
+修改内容：
+
+- 新增 `docs/07_backend_linux_handoff.md`。
+- 记录 Linux 容器中 `cmake` 失败的原因：`cpp-microservice-kit` 路径被硬编码为不存在的 `/home/dev/workspace/cpp-microservice-kit`。
+- 给出推荐修复方案：将 `CPP_MICROSERVICE_KIT_DIR` 改为 CMake cache path，并支持自动探测多个候选路径。
+- 写明 log-service 当前能力、限制、编译方式、curl 验证方式。
+- 写明后续每个子服务一个阶段的开发顺序和提交要求。
+
+原因：
+
+- 用户准备在 Linux 环境开启新的 Codex 窗口继续后端开发，需要明确交接当前状态。
+- Linux 环境可以直接编译测试，必须先修复构建路径问题再继续开发新服务。
+
+影响范围：
+
+- `docs/07_backend_linux_handoff.md`
+- `README.md`
+- `CHANGES.md`
+
+下一步：
+
+- Linux Codex 先修复顶层 CMake 脚手架路径探测。
+- 完成 log-service 编译、启动和 HTTP JSON 接口验证。
+- 更新 `CHANGES.md` 后提交并推送。
+
+是否已提交 Git：
+
+- 是。已纳入阶段 1 Linux 交接文档提交。

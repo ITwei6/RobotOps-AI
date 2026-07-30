@@ -267,6 +267,7 @@ docs/03_data_model.md
 docs/04_mvp_plan.md
 docs/05_web_frontend_design.md
 docs/06_development_guide.md
+docs/07_backend_linux_handoff.md
 ```
 
 后续开发必须先阅读：
