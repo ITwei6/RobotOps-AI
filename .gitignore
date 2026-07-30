@@ -1,0 +1,13 @@
+build/
+cmake-build-*/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.pyc
+*.log.*
+uploads/
+storage/
+.env
+reference_projects/
+
