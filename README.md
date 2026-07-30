@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 4：Agent 诊断闭环编排
+阶段 5：LangGraph Agent 工作流设计
 ```
 
 已完成：
@@ -302,6 +302,7 @@ CHANGES.md
 - `ticket-diagnosis-service` 初版：创建 Bug 单、创建诊断任务、保存和查询诊断报告。
 - `agent-service` 初版：FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
 - `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
+- 已完成 LangGraph / LangChain / ReAct 调研，当前正在设计 `agent-service` 的 `DiagnosisState`、节点、图结构、工具边界和降级策略。
 
 当前限制：
 
@@ -313,3 +314,4 @@ CHANGES.md
 
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
 - Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。
+- 下一步先按 `docs/10_langgraph_workflow_design.md` 落地 LangGraph workflow skeleton，保持 `/diagnose` 外部接口不变。

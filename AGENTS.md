@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 4：Agent 诊断闭环编排阶段
+阶段 5：LangGraph Agent 工作流设计阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版，以及 `ticket-diagnosis-service -> agent-service` 同步诊断编排。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版，以及 `ticket-diagnosis-service -> agent-service` 同步诊断编排。当前阶段先设计 `agent-service` 的 LangGraph 状态、节点、图结构、工具边界和降级策略，再进行后续代码实现。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

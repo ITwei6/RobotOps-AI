@@ -558,3 +558,40 @@ ROBOTOPS_AGENT_SERVICE_URL=http://127.0.0.1:9601
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-31 阶段 5：LangGraph Agent 工作流设计
+
+修改内容：
+
+- 新增 `docs/10_langgraph_workflow_design.md`。
+- 详细设计 `agent-service` 后续 LangGraph 工作流：
+  - `DiagnosisState` 字段、更新方式和读写节点。
+  - `normalize_input_node`、`rule_evidence_node`、`planner_node`、`tool_executor_node`、`observation_analyzer_node`、`llm_report_node`、`fallback_report_node`、`confidence_check_node`、`finalize_node`。
+  - `planner -> tool action -> observation -> report` 的受控 ReAct 图结构。
+  - `log_context`、`source_search`、`case_search`、`knowledge_search` 工具接口边界。
+  - DeepSeek / LangChain 接入方式和无 API key fallback 策略。
+  - 置信度上限、测试计划和分阶段验收标准。
+- 更新 `AGENTS.md` 和 `README.md` 当前阶段说明，明确当前先设计 LangGraph 状态和图结构，再进行后续代码开发。
+
+原因：
+
+- 用户明确要求不要直接瞎写 LangGraph / LangChain 代码，必须先学习优秀实践并设计状态和图结构。
+- `agent-service` 是项目后续重点，必须先把诊断过程拆成可观测、可测试、可降级的工作流。
+- RobotOps AI 需要复现真实 interaction Bug 排障过程，不能把日志、源码、历史案例和报告生成塞进一个大 prompt。
+
+影响范围：
+
+- `docs/10_langgraph_workflow_design.md`
+- `AGENTS.md`
+- `README.md`
+- `CHANGES.md`
+
+下一步：
+
+- 按设计实现 `agent_service/app/workflow/state.py`、`graph.py`、`nodes.py`、`routing.py` 和 `confidence.py`。
+- 保持 `/diagnose` 外部接口不变，内部切换到 LangGraph workflow。
+- 先保证没有 `DEEPSEEK_API_KEY` 时仍可通过现有规则诊断测试，再接入 `ChatDeepSeek` 报告节点。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。
