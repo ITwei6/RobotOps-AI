@@ -10,4 +10,5 @@ uploads/
 storage/
 .env
 reference_projects/
-
+frontend/node_modules/
+frontend/dist/

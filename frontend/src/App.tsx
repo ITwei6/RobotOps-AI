@@ -1,0 +1,220 @@
+import { FormEvent, type Dispatch, type ReactNode, type SetStateAction, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Bot,
+  Boxes,
+  Check,
+  ChevronDown,
+  CircleDot,
+  Clock3,
+  Code2,
+  FileSearch,
+  Gauge,
+  Layers3,
+  LayoutDashboard,
+  Menu,
+  Network,
+  PanelLeftClose,
+  Play,
+  RefreshCw,
+  Search,
+  ServerCog,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  TerminalSquare,
+  X,
+  Zap,
+} from "lucide-react";
+
+type View = "overview" | "analysis" | "logs" | "modules";
+
+type EvidenceLog = {
+  module_name: string;
+  file_name: string;
+  line_no: number;
+  log_time: number;
+  log_level: string;
+  message: string;
+};
+
+type SourceEvidence = {
+  repo: string;
+  file_path: string;
+  function_name: string;
+  matched_text: string;
+  snippet: string;
+};
+
+type Report = {
+  summary: string;
+  suspected_module: string;
+  possible_causes: string[];
+  execution_chain: string[];
+  module_relations: Array<{
+    from_module: string;
+    to_module: string;
+    reason: string;
+    evidence_type: string;
+    time_delta_ms?: number;
+  }>;
+  evidence_logs: EvidenceLog[];
+  evidence_sources: SourceEvidence[];
+  recommended_actions: string[];
+  confidence: number;
+  questions_for_human: string[];
+  status: string;
+};
+
+const demoReport: Report = {
+  summary: "触摸事件已进入 interaction，但被 T1 CheckTouch 根据当前 MC action 拦截。",
+  suspected_module: "interaction",
+  possible_causes: ["当前 MC action 处于 DAMPING_DEFAULT 或 PASSIVE_DEFAULT，interaction 按安全规则未创建触摸任务。"],
+  execution_chain: ["触摸事件进入 interaction", "T1 CheckTouch 前置检查拦截", "未进入触摸任务创建/派发阶段"],
+  module_relations: [
+    { from_module: "interaction", to_module: "mc", reason: "interaction 日志引用当前 action", evidence_type: "log", time_delta_ms: 20 },
+  ],
+  evidence_logs: [
+    { module_name: "interaction", file_name: "interaction.log", line_no: 18342, log_time: 1785396730150, log_level: "WARN", message: "Current action is DAMPING_DEFAULT or PASSIVE_DEFAULT, ignore touch trigger, action_id: 100" },
+    { module_name: "mc", file_name: "mc.log", line_no: 9041, log_time: 1785396730170, log_level: "INFO", message: "Current action changed to PASSIVE_DEFAULT" },
+  ],
+  evidence_sources: [
+    { repo: "interaction", file_path: "interaction/src/scheduler/checker/t1_checker.cpp", function_name: "T1Checker::CheckTouch", matched_text: "ignore touch trigger", snippet: "if (curr_action_id == DAMPING_DEFAULT || curr_action_id == PASSIVE_DEFAULT) {\n  AIMRTE_WARN(\"ignore touch trigger\");\n  return false;\n}" },
+  ],
+  recommended_actions: ["确认触摸发生时 MC action_id 是否符合预期，并联动 mc.log 判断底层是否处于急停、阻尼或未站立状态。"],
+  confidence: 0.85,
+  questions_for_human: ["请确认该触摸事件发生时机器人是否应处于可交互 action。"],
+  status: "TASK_STATUS_SUCCEEDED",
+};
+
+const moduleRows = [
+  { name: "interaction", state: "分析中", health: 86, tone: "blue", detail: "主链路 / 2 条证据" },
+  { name: "mc", state: "已关联", health: 72, tone: "amber", detail: "action 状态 / 1 条证据" },
+  { name: "hds", state: "正常", health: 98, tone: "green", detail: "无高等级故障" },
+  { name: "sm", state: "正常", health: 94, tone: "green", detail: "状态同步正常" },
+  { name: "hal_touch", state: "已接入", health: 91, tone: "green", detail: "触摸事件已上报" },
+  { name: "agent", state: "空闲", health: 100, tone: "slate", detail: "等待下一任务" },
+];
+
+const navItems: Array<{ id: View; label: string; icon: typeof LayoutDashboard }> = [
+  { id: "overview", label: "总览", icon: LayoutDashboard },
+  { id: "analysis", label: "Bug 分析", icon: Sparkles },
+  { id: "logs", label: "日志时间线", icon: TerminalSquare },
+  { id: "modules", label: "模块状态", icon: Network },
+];
+
+function App() {
+  const [view, setView] = useState<View>("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [report, setReport] = useState<Report>(demoReport);
+  const [isRunning, setIsRunning] = useState(false);
+  const [apiState, setApiState] = useState<"demo" | "live" | "error">("demo");
+  const [form, setForm] = useState({
+    title: "触摸后机器人没有反应",
+    description: "T 型机器人拍触摸板没有反馈，问题发生时机器人处于待机状态。",
+    robot_type: "ROBOT_TYPE_T",
+    main_module: "interaction",
+    occurred_time: "2026-07-30T15:32",
+    log_package_id: "pkg-live-fixed",
+  });
+
+  const activeLabel = navItems.find((item) => item.id === view)?.label ?? "总览";
+  const confidencePercent = Math.round(report.confidence * 100);
+  const sortedLogs = useMemo(() => [...report.evidence_logs].sort((a, b) => a.log_time - b.log_time), [report]);
+
+  async function runDiagnosis(event?: FormEvent) {
+    event?.preventDefault();
+    setIsRunning(true);
+    setApiState("demo");
+    const payload = {
+      bug: { ...form, occurred_time: new Date(form.occurred_time).getTime() },
+      logs: [],
+    };
+    try {
+      const response = await fetch("/api/diagnose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`agent-service ${response.status}`);
+      setReport(await response.json());
+      setApiState("live");
+    } catch {
+      setApiState("error");
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  return (
+    <div className="app-shell">
+      <aside className={`sidebar ${sidebarOpen ? "is-open" : "is-collapsed"}`}>
+        <div className="brand-row">
+          <div className="brand-mark"><Bot size={19} strokeWidth={2.3} /></div>
+          {sidebarOpen && <div><strong>RobotOps</strong><span>AI diagnostics</span></div>}
+          <button className="icon-button sidebar-toggle" aria-label="折叠导航" onClick={() => setSidebarOpen(!sidebarOpen)}>
+            {sidebarOpen ? <PanelLeftClose size={18} /> : <Menu size={18} />}
+          </button>
+        </div>
+        {sidebarOpen && <div className="workspace-switcher"><div><span className="eyebrow">WORKSPACE</span><strong>研发诊断中心</strong></div><ChevronDown size={16} /></div>}
+        <nav className="side-nav" aria-label="主导航">
+          {navItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => setView(id)} title={label}><Icon size={18} /><span>{label}</span>{id === "analysis" && <b className="nav-count">3</b>}</button>)}
+        </nav>
+        {sidebarOpen && <div className="sidebar-footer"><div className="system-status"><span className="live-dot" /> <span>诊断服务在线</span><span className="status-time">12s</span></div><button className="nav-item"><Settings2 size={18} /><span>系统设置</span></button></div>}
+      </aside>
+
+      <main className="main-area">
+        <header className="topbar">
+          <div className="breadcrumb"><span>RobotOps AI</span><ArrowRight size={14} /><strong>{activeLabel}</strong></div>
+          <div className="top-actions"><span className={`connection-pill ${apiState}`}><span className="live-dot" />{apiState === "live" ? "Agent API 已连接" : apiState === "error" ? "演示数据" : "本地演示"}</span><button className="icon-button" aria-label="刷新数据" onClick={() => setReport({ ...demoReport })}><RefreshCw size={17} /></button><div className="user-avatar">RD</div></div>
+        </header>
+
+        <div className="content-wrap">
+          <div className="page-heading"><div><div className="eyebrow accent-label">研发测试阶段 / DIAGNOSTICS</div><h1>{activeLabel}</h1><p>把 Bug 现象、时间窗口和多模块证据组织成可追溯的诊断结论。</p></div><div className="heading-actions"><button className="button secondary" onClick={() => setView("logs")}><Clock3 size={16} />查看时间线</button><button className="button primary" onClick={() => { setView("analysis"); }}>{isRunning ? "分析中..." : "新建诊断"}<ArrowRight size={16} /></button></div></div>
+          {view === "overview" && <Overview report={report} confidencePercent={confidencePercent} onRun={() => runDiagnosis()} onOpenAnalysis={() => setView("analysis")} />}
+          {view === "analysis" && <Analysis form={form} setForm={setForm} report={report} isRunning={isRunning} apiState={apiState} onSubmit={runDiagnosis} />}
+          {view === "logs" && <Timeline logs={sortedLogs} relations={report.module_relations} />}
+          {view === "modules" && <Modules />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function Overview({ report, confidencePercent, onRun, onOpenAnalysis }: { report: Report; confidencePercent: number; onRun: () => void; onOpenAnalysis: () => void }) {
+  return <>
+    <section className="kpi-grid">
+      <Kpi icon={<FileSearch size={18} />} label="待处理 Bug" value="03" delta="+1 今日" tone="blue" />
+      <Kpi icon={<Sparkles size={18} />} label="AI 诊断任务" value="08" delta="5 已完成" tone="violet" />
+      <Kpi icon={<AlertTriangle size={18} />} label="高风险问题" value="02" delta="需人工确认" tone="red" />
+      <Kpi icon={<Gauge size={18} />} label="平均置信度" value={`${confidencePercent}%`} delta="+8% 本周" tone="green" />
+    </section>
+    <div className="dashboard-grid">
+      <section className="panel diagnosis-panel"><div className="panel-header"><div><span className="eyebrow">ACTIVE DIAGNOSIS</span><h2>触摸后机器人没有反应</h2></div><span className="status-badge running"><span className="live-dot" />分析完成</span></div><div className="diagnosis-meta"><span><Bot size={15} /> T 型机器人</span><span><Layers3 size={15} /> interaction</span><span><Clock3 size={15} /> 2026-07-30 15:32</span></div><div className="diagnosis-callout"><div className="callout-icon"><ShieldCheck size={20} /></div><div><strong>{report.summary}</strong><p>当前结论基于 {report.evidence_logs.length} 条日志证据、{report.evidence_sources.length} 条源码证据和 {report.module_relations.length} 条模块关系。</p></div><div className="confidence-ring"><b>{confidencePercent}%</b><span>置信度</span></div></div><ExecutionChain items={report.execution_chain} /><div className="panel-footer"><button className="text-button" onClick={onOpenAnalysis}>打开完整报告 <ArrowRight size={15} /></button><button className="button primary small" onClick={onRun}><Play size={14} />重新诊断</button></div></section>
+      <section className="panel module-panel"><div className="panel-header"><div><span className="eyebrow">MODULE SIGNALS</span><h2>模块状态</h2></div><button className="icon-button" aria-label="查看模块状态" onClick={onOpenAnalysis}><ArrowRight size={17} /></button></div><div className="module-list">{moduleRows.map((row) => <div className="module-row" key={row.name}><span className={`module-icon ${row.tone}`}><CircleDot size={14} /></span><div className="module-name"><strong>{row.name}</strong><span>{row.detail}</span></div><div className="module-health"><div className="health-track"><i className={row.tone} style={{ width: `${row.health}%` }} /></div><span>{row.health}%</span></div><span className={`state-label ${row.tone}`}>{row.state}</span></div>)}</div></section>
+    </div>
+    <div className="lower-grid"><section className="panel timeline-panel"><div className="panel-header"><div><span className="eyebrow">EVIDENCE TIMELINE</span><h2>关键日志时间线</h2></div><button className="text-button" onClick={() => onOpenAnalysis()}>全部证据 <ArrowRight size={15} /></button></div><Timeline logs={report.evidence_logs.slice(0, 4)} relations={report.module_relations} compact /></section><section className="panel action-panel"><div className="panel-header"><div><span className="eyebrow">NEXT ACTIONS</span><h2>建议处理方向</h2></div><Zap size={18} className="panel-accent" /></div><ul className="action-list">{report.recommended_actions.slice(0, 3).map((action) => <li key={action}><span><Check size={14} /></span>{action}</li>)}</ul><button className="button secondary full" onClick={onOpenAnalysis}>查看人工确认项 <ArrowRight size={15} /></button></section></div>
+  </>;
+}
+
+function Analysis({ form, setForm, report, isRunning, apiState, onSubmit }: { form: typeof initialForm; setForm: Dispatch<SetStateAction<typeof initialForm>>; report: Report; isRunning: boolean; apiState: string; onSubmit: (event: FormEvent) => void }) {
+  return <div className="analysis-layout"><section className="panel form-panel"><div className="panel-header"><div><span className="eyebrow">BUG CONTEXT</span><h2>提交诊断上下文</h2></div><span className="status-badge neutral"><FileSearch size={14} />只需要现象和日志包</span></div><form onSubmit={onSubmit}><label>Bug 标题<input value={form.title} onChange={(e) => setForm((old) => ({ ...old, title: e.target.value }))} /></label><label>现象描述<textarea rows={5} value={form.description} onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))} /></label><div className="form-two"><label>机器人类型<select value={form.robot_type} onChange={(e) => setForm((old) => ({ ...old, robot_type: e.target.value }))}><option value="ROBOT_TYPE_T">T 型机器人</option><option value="ROBOT_TYPE_Q">Q 型机器人</option></select></label><label>主模块<select value={form.main_module} onChange={(e) => setForm((old) => ({ ...old, main_module: e.target.value }))}><option value="interaction">interaction</option><option value="mc">mc</option><option value="agent">agent</option><option value="hds">hds</option><option value="sm">sm</option></select></label></div><div className="form-two"><label>发生时间<input type="datetime-local" value={form.occurred_time} onChange={(e) => setForm((old) => ({ ...old, occurred_time: e.target.value }))} /></label><label>日志包 ID<input value={form.log_package_id} onChange={(e) => setForm((old) => ({ ...old, log_package_id: e.target.value }))} /></label></div><div className="form-note"><ShieldCheck size={16} />测试人员只需提供 Bug 现象、时间和日志包；源码由平台配置。</div><button className="button primary full" type="submit" disabled={isRunning}>{isRunning ? <><RefreshCw size={16} className="spin" />Agent 分析中...</> : <><Sparkles size={16} />启动 Agent 诊断</>}</button>{apiState === "error" && <div className="inline-warning"><AlertTriangle size={15} />Agent API 当前不可用，页面保留演示报告。</div>}</form></section><section className="panel report-panel"><div className="panel-header"><div><span className="eyebrow">DIAGNOSIS REPORT</span><h2>结构化诊断报告</h2></div><span className={`status-badge ${report.confidence >= 0.8 ? "success" : "warning"}`}>{Math.round(report.confidence * 100)}% 置信度</span></div><div className="report-summary"><span className="report-label">疑似责任模块</span><strong>{report.suspected_module}</strong><p>{report.summary}</p></div><ExecutionChain items={report.execution_chain} /><div className="report-section"><div className="section-title"><Code2 size={16} />源码证据 <span>{report.evidence_sources.length}</span></div>{report.evidence_sources.length ? report.evidence_sources.map((source) => <div className="source-card" key={source.file_path}><div><strong>{source.function_name}</strong><span>{source.file_path}</span></div><code>{source.snippet}</code></div>) : <div className="empty-state">尚未获得真实源码证据，当前显示的是规则导航提示。</div>}</div><div className="report-section"><div className="section-title"><TerminalSquare size={16} />日志证据 <span>{report.evidence_logs.length}</span></div><div className="evidence-log-list">{report.evidence_logs.map((log) => <div className="evidence-log" key={`${log.file_name}-${log.line_no}`}><span className="log-level">{log.log_level}</span><div><strong>{log.module_name} / {log.file_name}:{log.line_no}</strong><p>{log.message}</p></div></div>)}</div></div></section></div>;
+}
+
+const initialForm = { title: "", description: "", robot_type: "ROBOT_TYPE_T", main_module: "interaction", occurred_time: "", log_package_id: "" };
+
+function Timeline({ logs, relations, compact = false }: { logs: EvidenceLog[]; relations: Report["module_relations"]; compact?: boolean }) {
+  return <div className={`timeline ${compact ? "compact" : ""}`}>{logs.map((log, index) => { const timestamp = new Date(log.log_time); const milliseconds = String(timestamp.getMilliseconds()).padStart(3, "0"); return <div className="timeline-item" key={`${log.file_name}-${log.line_no}-${index}`}><div className="timeline-time">{timestamp.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}.{milliseconds}</div><div className={`timeline-node ${log.log_level.toLowerCase()}`}><span /></div><div className="timeline-content"><div><span className={`log-chip ${log.log_level.toLowerCase()}`}>{log.log_level}</span><strong>{log.module_name}</strong><span className="muted">{log.file_name}:{log.line_no}</span></div><p>{log.message}</p></div></div>; })}{relations.map((relation) => <div className="relation-strip" key={`${relation.from_module}-${relation.to_module}`}><Network size={14} />{relation.from_module} <ArrowRight size={13} /> {relation.to_module}<span>{relation.time_delta_ms !== undefined ? `${relation.time_delta_ms}ms later` : "source linked"}</span></div>)}</div>;
+}
+
+function ExecutionChain({ items }: { items: string[] }) {
+  return <div className="execution-chain">{items.map((item, index) => <div className="chain-step" key={item}><span>{index + 1}</span><strong>{item}</strong>{index < items.length - 1 && <ArrowRight size={14} />}</div>)}</div>;
+}
+
+function Modules() { return <section className="panel modules-page"><div className="panel-header"><div><span className="eyebrow">MODULE HEALTH</span><h2>模块实时状态</h2></div><button className="button secondary"><RefreshCw size={15} />刷新</button></div><div className="module-health-grid">{moduleRows.map((row) => <div className="module-detail" key={row.name}><div className="module-detail-top"><span className={`module-icon ${row.tone}`}><ServerCog size={16} /></span><strong>{row.name}</strong><span className={`state-label ${row.tone}`}>{row.state}</span></div><div className="big-health"><b>{row.health}</b><span>/ 100 health score</span></div><div className="health-track"><i className={row.tone} style={{ width: `${row.health}%` }} /></div><p>{row.detail}</p></div>)}</div></section>; }
+
+function Kpi({ icon, label, value, delta, tone }: { icon: ReactNode; label: string; value: string; delta: string; tone: string }) { return <div className="kpi"><div className={`kpi-icon ${tone}`}>{icon}</div><div><span>{label}</span><strong>{value}</strong><small className={tone}>{delta}</small></div><div className="mini-bars" aria-hidden="true">{[22, 42, 30, 56, 45, 70, 64].map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}</div></div>; }
+
+export default App;

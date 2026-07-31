@@ -254,6 +254,14 @@ source-index-service
 
 Web 视觉和产品组织方式参考 `qinshihu/itops-agent-platform` 这类运维 Agent 平台：重点是清晰呈现“输入、分析、执行、证据、结论”的闭环，而不是做一个普通表格后台。
 
+当前已提供 `frontend/` Web 工作台 MVP，使用 React + TypeScript + Vite + Lucide。开发服务器默认监听 `4173`，`/api` 请求通过 Vite 代理到本地 `ticket-diagnosis-service`；后端不可用时页面保留可识别的演示报告，不阻塞前端联调。运行方式：
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 0.0.0.0
+```
+
 ## 开发状态
 
 当前已进入后端开发阶段。
@@ -293,7 +301,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 6.7：跨模块日志时间线关联
+阶段 7.0：Web 诊断工作台 MVP
 ```
 
 已完成：
@@ -313,6 +321,7 @@ CHANGES.md
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
 - `RunDiagnosis` 当前仍以调用方传入证据为主，但 Agent 已具备基于 `log_package_id` 主动拉取日志上下文的工具入口。
 - `case_search` 已支持本地 JSON/JSONL 案例索引，按 Bug 描述、机器人类型、主模块和日志关键词排序；没有案例目录时安全返回空结果。
+- Web 工作台已完成总览、Bug 分析、日志时间线和模块状态四个核心视图，支持提交诊断上下文、展示跨模块证据和调用 `/api/diagnose`。
 - `knowledge_search` 已支持本地 JSON/JSONL 知识索引，按 Bug 描述、主模块和日志关键词排序，并保留 `source` 来源标识。
 - DeepSeek 真实 API key 场景尚未做 live 网络调用验证，当前使用 mock 覆盖结构化输出和失败降级。
 

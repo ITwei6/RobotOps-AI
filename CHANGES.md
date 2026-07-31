@@ -2,6 +2,54 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 7.0：Web 诊断工作台 MVP
+
+修改内容：
+
+- 新增 `frontend/` React + TypeScript + Vite 工作台，首屏展示诊断摘要、Agent 执行链、模块信号、跨模块日志时间线和下一步动作。
+- 新增 Bug 分析视图，支持填写 Bug 现象、发生时间、T/Q 机器人类型、主模块和日志包 ID，并通过 `POST /api/diagnose` 调用后端诊断接口。
+- 新增日志时间线和模块状态视图，展示 interaction、mc、hds、sm、hal_touch、agent 等模块的状态及证据关系。
+- 使用 `lucide-react` 统一图标，加入响应式布局、键盘焦点状态、减少动效支持和 API 不可用时的明确演示 fallback。
+- 下载并安装 `ui-ux-pro-max-skill`，使用其 design-system 生成流程持久化 `design-system/robotops-ai/MASTER.md`；结合 RobotOps 运维场景将界面落地为高密度、可扫描的工程工作台。
+- 新增 `frontend/README.md`，说明本地启动、页面范围、API 代理和设计系统来源。
+
+原因：
+
+- 纯后端接口和测试结果无法直观验证 RobotOps AI 的诊断闭环，需要先建立可操作的 Web 入口。
+- 前端必须能显示“输入、分析、执行、证据、结论”，并反映 interaction 主模块与 mc 等关联模块的时间线关系。
+
+影响范围：
+
+- `frontend/`
+- `design-system/robotops-ai/MASTER.md`
+- `README.md`
+- `AGENTS.md`
+- `.gitignore`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先阅读项目协作规范、README、Web 前端设计文档和 Agent 当前阶段状态，再安装用户指定的 `ui-ux-pro-max-skill`。
+- 设计系统命令生成了默认设计基线；实现时按本项目运维后台定位调整为深色导航、白色工作区、蓝绿黄红状态色和密集信息布局，没有直接采用与业务不符的植物/营销页面模板。
+- 初次依赖安装因宿主机磁盘空间不足失败，清理用户缓存后恢复空间；随后固定 React/Vite/TypeScript 版本并使用非可选依赖安装。
+- 构建过程中补齐 React 类型声明，并处理 Rollup Linux 原生包缺失问题，最终完成生产构建。
+
+验证结果：
+
+- `frontend/npm run build`：通过，Vite 生成 `frontend/dist`。
+- 运行时检查：Vite 开发服务器启动成功，首页 `http://127.0.0.1:4173/` 返回正常；后端未启动时 `/api/diagnose` 返回失败状态，前端 fallback 逻辑可接管显示。
+- `git diff --check`：通过。
+
+下一步：
+
+- 将 Bug 详情、日志包上传和报告详情拆为可路由页面。
+- 接入真实 `log-service` 查询接口，替换演示日志和模块状态。
+- 根据实际联调结果补充前端错误态、加载态和报告证据展开交互。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-07-31 阶段 6.7：跨模块日志时间线关联
 
 修改内容：
