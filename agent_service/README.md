@@ -13,6 +13,7 @@
 - `source_search` 工具初版，优先用 `rg` 检索本地 interaction 源码，缺少 `rg` 时使用标准库递归文本搜索兜底。
 - DeepSeek 结构化报告节点加固：LLM 报告必须通过 `DiagnosisReport` 校验，成功时合并规则证据，失败时 fallback 到规则报告。
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，按 Bug 描述、T/Q 机型、模块和日志关键词匹配。
+- `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，返回带 `source` 的参考条目。
 
 当前策略：
 
@@ -40,8 +41,9 @@ Bug 描述 / 机器人类型 / 主模块
 ROBOTOPS_LOG_SERVICE_URL=http://127.0.0.1:9501
 ROBOTOPS_SOURCE_SEARCH_ROOTS=../interaction:../aimrt_agent/aimrt_agent/interaction
 ROBOTOPS_CASE_SEARCH_ROOTS=knowledge/cases:docs/cases
+ROBOTOPS_KNOWLEDGE_SEARCH_ROOTS=knowledge/articles:docs/knowledge
 ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS=5
-ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS=3
+ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS=4
 ROBOTOPS_LLM_ENABLED=true
 ROBOTOPS_LLM_MODEL=deepseek-v4-flash
 DEEPSEEK_API_KEY=<通过安全渠道注入，不写入仓库>

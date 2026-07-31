@@ -176,6 +176,35 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertTrue(any("case-touch-001" in item for item in report["possible_causes"]))
         self.assertTrue(any("case-touch-001" in item for item in report["recommended_actions"]))
 
+    def test_workflow_adds_knowledge_as_source_reference(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Path(tmpdir, "knowledge.json").write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "source_id": "sop-interaction-001",
+                                "main_module": "interaction",
+                                "title": "触摸排查 SOP",
+                                "content": "检查 self check 与 MC action。",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                "os.environ",
+                {
+                    "ROBOTOPS_CASE_SEARCH_ROOTS": "/path/that/does/not/exist",
+                    "ROBOTOPS_KNOWLEDGE_SEARCH_ROOTS": tmpdir,
+                },
+            ):
+                report = run_diagnosis_workflow(self.touch_payload)
+
+        self.assertTrue(any("sop-interaction-001" in item for item in report["recommended_actions"]))
+
 
 if __name__ == "__main__":
     unittest.main()

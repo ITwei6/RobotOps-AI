@@ -356,6 +356,64 @@ cmake --build build -j1
 
 - 待本阶段全量测试通过后提交。
 
+## 2026-07-31 阶段 5.5：知识库检索工具接入
+
+修改内容：
+
+- 新增 `agent_service/app/tools/knowledge_tool.py`，支持读取本地 `.json` / `.jsonl` SOP、错误码和模块知识条目。
+- 知识检索按 Bug 标题、描述、主模块和日志关键词匹配，返回排序后的 `knowledge_items`，并保留 `source` / `source_id` 来源标识。
+- 将 `knowledge_search` 接入 LangGraph planner 和 tool executor；默认工具预算从 3 次提升到 4 次，允许完成“日志 -> 源码 -> 历史案例 -> 知识库”的取证顺序。
+- 修复空结果重复调用问题：planner 通过 `observations` 判断 `case_search` / `knowledge_search` 是否已经尝试过，每类工具最多调用一次。
+- deterministic fallback 将知识条目标记为“知识库参考（source）”后加入排查建议；LLM 场景继续通过请求上下文读取完整知识条目。
+- 新增知识工具和工作流测试，覆盖 JSONL、来源保留、空目录降级及端到端参考建议。
+
+原因：
+
+- 历史案例解决“以前遇到过什么”，知识库还需要承载 SOP、错误码和模块边界，二者不能混为一个案例索引。
+- `knowledge_search` 原先为空 stub，Agent 无法复用团队排障规范；本阶段先提供无外部数据库依赖的可替换检索接口，为后续 knowledge-service / 向量数据库接入保留边界。
+- 同时修复空索引反复规划同一工具的路由缺陷，避免无效消耗工具预算。
+
+影响范围：
+
+- `agent_service/app/tools/knowledge_tool.py`
+- `agent_service/app/tools/__init__.py`
+- `agent_service/app/settings.py`
+- `agent_service/app/workflow/state.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_knowledge_tool.py`
+- `agent_service/tests/test_workflow.py`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 开发前重新核对了项目协作说明、Agent 服务文档、Agent 重点规划和 LangGraph 状态设计，确认本阶段仍限定在 Python agent-service。
+- 检查历史案例工作流时发现：案例索引为空时，planner 仅根据 `history_cases` 判断，会重复请求 `case_search`；已用工具观察记录修复，并增加工作流覆盖。
+- 知识文件损坏、编码异常或目录不存在时跳过并返回空结果，不阻断报告生成。
+- API key 未写入代码、文档、测试或命令行；本阶段所有测试均为本地索引测试，不调用 DeepSeek 网络接口。
+
+验证结果：
+
+- 已完成 `py_compile` 和 `git diff --check` 静态检查。
+- 首次全量测试为 16 个测试、1 个失败；失败暴露源码工具成功后观察节点直接进入报告、未继续案例/知识检索的问题。
+- 修正观察节点的“是否还有未尝试取证阶段”判断后，容器内全量测试为 16 个测试全部通过。
+
+当前限制：
+
+- 当前检索是本地文本匹配，不是向量 RAG；尚未接入 embedding、Milvus/Chroma 或 knowledge-service。
+- 知识条目当前以参考建议形式进入 deterministic fallback，报告 schema 尚未增加独立知识证据字段。
+
+下一步：
+
+- 设计 knowledge-service / 向量检索适配层，统一返回来源、版本和片段位置。
+- 让 `ticket-diagnosis-service.RunDiagnosis` 携带 `log_package_id`，完成 C++ 编排到 Agent 自动取证的联调。
+
+是否已提交 Git：
+
+- 待本阶段全量测试通过后提交。
+
 ## 2026-07-30 阶段 2：ticket-diagnosis-service Bug 与诊断任务服务
 
 修改内容：

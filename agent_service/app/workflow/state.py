@@ -37,7 +37,7 @@ class GraphTraceEvent(TypedDict, total=False):
 
 
 class DiagnosisPlan(TypedDict, total=False):
-    phase: Literal["collect_logs", "search_source", "retrieve_cases", "generate_report", "human_review"]
+    phase: Literal["collect_logs", "search_source", "retrieve_cases", "retrieve_knowledge", "generate_report", "human_review"]
     reason: str
     tool_requests: List[ToolRequest]
 

@@ -7,7 +7,7 @@ from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structu
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
-from agent_service.app.tools import fetch_log_context, search_cases, search_source
+from agent_service.app.tools import fetch_log_context, search_cases, search_knowledge, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
 
@@ -91,7 +91,7 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
             ],
         )
 
-    if not state.get("history_cases") and _can_use_more_tools(state):
+    if not state.get("history_cases") and not _tool_was_attempted(state, "case_search") and _can_use_more_tools(state):
         return _plan(
             "retrieve_cases",
             "已有基础证据，检索相似 interaction 历史案例作为参考。",
@@ -103,6 +103,25 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                         "title": bug.get("title", ""),
                         "description": bug.get("description", ""),
                         "robot_type": bug.get("robot_type", ""),
+                        "main_module": bug.get("main_module", ""),
+                        "keywords": _keywords_from_logs(state.get("log_evidence") or []),
+                        "max_results": 5,
+                    },
+                }
+            ],
+        )
+
+    if not state.get("knowledge_items") and not _tool_was_attempted(state, "knowledge_search") and _can_use_more_tools(state):
+        return _plan(
+            "retrieve_knowledge",
+            "案例检索完成，继续检索相关 SOP、错误码和模块知识。",
+            [
+                {
+                    "tool_name": "knowledge_search",
+                    "reason": "根据 Bug 描述、模块和日志关键词检索可引用的排障知识。",
+                    "args": {
+                        "title": bug.get("title", ""),
+                        "description": bug.get("description", ""),
                         "main_module": bug.get("main_module", ""),
                         "keywords": _keywords_from_logs(state.get("log_evidence") or []),
                         "max_results": 5,
@@ -148,7 +167,7 @@ def observation_analyzer_node(state: DiagnosisState) -> DiagnosisState:
 
     next_route = "report"
     combined_sources = list(state.get("source_evidence") or []) + sources
-    if _can_use_more_tools(state) and logs and not combined_sources:
+    if _can_use_more_tools(state) and _needs_more_tool_pass(state, logs, combined_sources):
         next_route = "plan"
 
     return {
@@ -192,6 +211,7 @@ def llm_report_node(state: DiagnosisState) -> DiagnosisState:
 def fallback_report_node(state: DiagnosisState) -> DiagnosisState:
     report = diagnose(_request_with_state_evidence(state))
     _merge_history_context(report, state.get("history_cases") or [])
+    _merge_knowledge_context(report, state.get("knowledge_items") or [])
     report["agent_version"] = "langgraph-diagnosis-v1"
     return {
         "report": DiagnosisReport(**report).model_dump(),
@@ -247,7 +267,8 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
         result = search_cases(settings.case_search_roots, args)
         return _tool_observation(tool_name, args, result, "history_cases")
     if tool_name == "knowledge_search":
-        return {"tool_name": tool_name, "ok": True, "args": args, "result": {"knowledge_items": []}}
+        result = search_knowledge(settings.knowledge_search_roots, args)
+        return _tool_observation(tool_name, args, result, "knowledge_items")
     return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
 
 
@@ -291,6 +312,17 @@ def _merge_history_context(report: Dict[str, Any], cases: List[Dict[str, Any]]) 
                 item = f"历史案例参考建议（{case_id}）：{value}"
                 if item not in report["recommended_actions"]:
                     report["recommended_actions"].append(item)
+
+
+def _merge_knowledge_context(report: Dict[str, Any], items: List[Dict[str, Any]]) -> None:
+    for item in items[:3]:
+        source = str(item.get("source") or item.get("source_id") or "unknown")
+        content = str(item.get("content") or item.get("summary") or "").strip()
+        if not content:
+            continue
+        reference = f"知识库参考（{source}）：{content}"
+        if reference not in report["recommended_actions"]:
+            report["recommended_actions"].append(reference)
 
 
 def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, Any], result_key: str) -> ToolObservation:
@@ -357,6 +389,29 @@ def _empty_report(state: DiagnosisState) -> Dict[str, Any]:
 
 def _can_use_more_tools(state: DiagnosisState) -> bool:
     return int(state.get("tool_iteration") or 0) < int(state.get("max_tool_iterations") or 0)
+
+
+def _tool_was_attempted(state: DiagnosisState, tool_name: str) -> bool:
+    return any(observation.get("tool_name") == tool_name for observation in state.get("observations") or [])
+
+
+def _needs_more_tool_pass(
+    state: DiagnosisState,
+    observed_logs: List[Dict[str, Any]],
+    observed_sources: List[Dict[str, Any]],
+) -> bool:
+    bug = state.get("bug", {})
+    has_logs = bool(state.get("log_evidence") or observed_logs)
+    has_sources = bool(state.get("source_evidence") or observed_sources)
+    if not has_logs and bug.get("log_package_id") and not _tool_was_attempted(state, "log_context"):
+        return True
+    if has_logs and not has_sources and not _tool_was_attempted(state, "source_search"):
+        return True
+    if not _tool_was_attempted(state, "case_search"):
+        return True
+    if not _tool_was_attempted(state, "knowledge_search"):
+        return True
+    return False
 
 
 def _keywords_from_logs(logs: List[Dict[str, Any]]) -> List[str]:

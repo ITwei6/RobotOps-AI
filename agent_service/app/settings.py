@@ -14,12 +14,13 @@ class AgentSettings:
     tool_timeout_seconds: float
     source_search_roots: tuple[str, ...]
     case_search_roots: tuple[str, ...]
+    knowledge_search_roots: tuple[str, ...]
 
 
 def load_settings() -> AgentSettings:
     api_key = os.getenv("DEEPSEEK_API_KEY", "")
     llm_flag = os.getenv("ROBOTOPS_LLM_ENABLED", "true").strip().lower()
-    max_tool_iterations = _int_env("ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS", 3)
+    max_tool_iterations = _int_env("ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS", 4)
     return AgentSettings(
         llm_enabled=bool(api_key) and llm_flag not in {"0", "false", "no", "off"},
         deepseek_api_key=api_key,
@@ -29,6 +30,7 @@ def load_settings() -> AgentSettings:
         tool_timeout_seconds=max(0.1, _float_env("ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS", 5.0)),
         source_search_roots=_source_roots_env(),
         case_search_roots=_case_roots_env(),
+        knowledge_search_roots=_knowledge_roots_env(),
     )
 
 
@@ -63,4 +65,11 @@ def _case_roots_env() -> tuple[str, ...]:
     value = os.getenv("ROBOTOPS_CASE_SEARCH_ROOTS", "")
     if not value:
         return ("knowledge/cases", "docs/cases")
+    return tuple(item.strip() for item in value.split(":") if item.strip())
+
+
+def _knowledge_roots_env() -> tuple[str, ...]:
+    value = os.getenv("ROBOTOPS_KNOWLEDGE_SEARCH_ROOTS", "")
+    if not value:
+        return ("knowledge/articles", "docs/knowledge")
     return tuple(item.strip() for item in value.split(":") if item.strip())
