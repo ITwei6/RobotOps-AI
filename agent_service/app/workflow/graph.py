@@ -117,6 +117,7 @@ class _SequentialDiagnosisGraph:
             "history_cases",
             "knowledge_items",
             "hypotheses",
+            "module_relations",
             "observations",
             "trace",
             "errors",

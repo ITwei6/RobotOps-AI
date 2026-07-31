@@ -20,6 +20,7 @@
 - `source_search` 支持源码工作区同步：远程 `source_repo` 未缓存时 clone，已有 Git 仓库先 `pull --ff-only`，可按 branch/commit 固定版本后再检索。
 - 本地 interaction 目录可以通过源码仓库注册表的 `local_path` 使用；检索结果会保留配置的 branch/commit，未指定 commit 时使用本地 Git 工作区同步返回的 revision。
 - `DiagnosisReport.execution_chain` 用于表达日志和规则支持的执行阶段；当前覆盖 `CheckTouch` 拦截链，不代表未观测到的后续阶段已被证明。
+- `DiagnosisReport.module_relations` 记录主模块到关联模块的关系、触发原因、证据类型和证据引用；只有该状态确认关联后，workflow 才继续检索关联模块源码。
 
 当前策略：
 

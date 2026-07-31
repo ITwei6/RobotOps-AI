@@ -2,6 +2,54 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.6：模块关联证据状态
+
+修改内容：
+
+- 新增 `ModuleRelation` 工作流状态和 `DiagnosisReport.module_relations` 字段。
+- 关联关系包含 `from_module`、`to_module`、`reason`、`evidence_type` 和 `evidence_refs`，例如 `interaction` 源码引用 `mc` 时记录为 source 关联。
+- 将关联模块源码路由从布尔判断改为 `module_relations` 状态驱动，只有确认主模块与目标模块存在日志或源码关联后才继续检索。
+- fallback 和 LLM 报告都会保留模块关联状态。
+- 新增 interaction 主链路触发 mc 检索和关联报告字段测试。
+
+原因：
+
+- 需要让 Agent 解释“为什么分析其他模块”，而不是仅凭字符串启发式悄悄扩大搜索范围。
+- 多模块证据必须能追溯到具体日志文件/行号或主模块源码文件。
+
+影响范围：
+
+- `agent_service/app/workflow/state.py`
+- `agent_service/app/models.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/workflow/graph.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 保留 interaction 主模块优先策略，未改成所有模块平均并行分析。
+- 由 observation analyzer 基于主模块日志和源码证据生成关系状态，再由 planner 决定是否检索 mc、hal、hds、sm。
+- source 关联和 log 关联分别记录证据类型，避免把目标模块的存在误当成已建立调用关系。
+
+验证结果：
+
+- Agent 全量测试：25 个测试全部通过。
+- `ticket_diagnosis_service` 在 `dev-env-service` 容器内编译通过。
+- `git diff --check`：待提交前执行。
+
+下一步：
+
+- 增加同一时间窗口内跨模块日志的行号/时间差关联，进一步验证 interaction 到 mc、hds、sm 的因果顺序。
+- 继续完善关系状态与 DeepSeek prompt 的结构化传递。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-31 阶段 6.5：Agent Tool 异常隔离与证据状态
 
 修改内容：

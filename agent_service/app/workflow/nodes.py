@@ -21,6 +21,7 @@ def normalize_input_node(state: DiagnosisState) -> DiagnosisState:
         "bug": dict(request.get("bug") or {}),
         "log_evidence": _unique_logs(request.get("logs") or []),
         "source_evidence": _unique_sources(request.get("sources") or []),
+        "module_relations": [],
         "history_cases": list(request.get("history_cases") or []),
         "knowledge_items": _knowledge_items(request.get("knowledge") or []),
         "llm_enabled": settings.llm_enabled,
@@ -41,6 +42,7 @@ def rule_evidence_node(state: DiagnosisState) -> DiagnosisState:
         "log_evidence": _unique_logs(report.get("evidence_logs") or []),
         "source_evidence": _unique_sources(report.get("evidence_sources") or []),
         "hypotheses": hypotheses,
+        "module_relations": _derive_module_relations(state, report.get("evidence_logs") or [], report.get("evidence_sources") or []),
         "confidence": float(report.get("confidence") or 0.0),
         "trace": [_trace("rule_evidence", "ok", "rule-template-v1 diagnosis completed")],
     }
@@ -171,6 +173,7 @@ def observation_analyzer_node(state: DiagnosisState) -> DiagnosisState:
 
     next_route = "report"
     combined_sources = list(state.get("source_evidence") or []) + sources
+    relations = _derive_module_relations(state, logs, sources)
     if _can_use_more_tools(state) and _needs_more_tool_pass(state, logs, combined_sources):
         next_route = "plan"
 
@@ -179,6 +182,7 @@ def observation_analyzer_node(state: DiagnosisState) -> DiagnosisState:
         "source_evidence": _unique_sources(sources),
         "history_cases": history_cases,
         "knowledge_items": knowledge_items,
+        "module_relations": relations,
         "next_route": next_route,
         "trace": [_trace("observation_analyzer", "ok", "converted observations to evidence")],
     }
@@ -216,6 +220,7 @@ def fallback_report_node(state: DiagnosisState) -> DiagnosisState:
     report = diagnose(_request_with_state_evidence(state))
     _merge_history_context(report, state.get("history_cases") or [])
     _merge_knowledge_context(report, state.get("knowledge_items") or [])
+    report["module_relations"] = _unique_relations(state.get("module_relations") or [])
     report["agent_version"] = "langgraph-diagnosis-v1"
     return {
         "report": DiagnosisReport(**report).model_dump(),
@@ -308,6 +313,8 @@ def _merge_report_evidence(report: Dict[str, Any], rule_report: Dict[str, Any]) 
         merged["possible_causes"] = list(rule_report.get("possible_causes") or [])
     if not merged.get("execution_chain"):
         merged["execution_chain"] = list(rule_report.get("execution_chain") or [])
+    if not merged.get("module_relations"):
+        merged["module_relations"] = list(rule_report.get("module_relations") or [])
     if not merged.get("recommended_actions"):
         merged["recommended_actions"] = list(rule_report.get("recommended_actions") or [])
     if not merged.get("suspected_module"):
@@ -468,29 +475,82 @@ def _next_source_modules(state: DiagnosisState) -> List[str]:
     primary = modules[0]
     if primary not in attempted:
         return [primary]
-    if not state.get("source_evidence") or not _has_cross_module_reference(state, modules):
+    if not state.get("source_evidence"):
         return []
-    return [module for module in modules[1:] if module not in attempted]
+    related = {
+        str(relation.get("to_module") or "")
+        for relation in state.get("module_relations") or []
+        if str(relation.get("from_module") or "") == primary
+    }
+    return [module for module in modules[1:] if module in related and module not in attempted]
 
 
-def _has_cross_module_reference(state: DiagnosisState, modules: List[str]) -> bool:
+def _derive_module_relations(
+    state: DiagnosisState,
+    additional_logs: List[Dict[str, Any]],
+    additional_sources: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    modules = _analysis_modules(state.get("bug", {}), list(state.get("log_evidence") or []) + additional_logs)
     primary = modules[0]
+    logs = list(state.get("log_evidence") or []) + additional_logs
+    sources = list(state.get("source_evidence") or []) + additional_sources
     primary_text = "\n".join(
         _log_search_text(log)
-        for log in state.get("log_evidence") or []
+        for log in logs
         if str(log.get("module_name") or "") == primary
     )
     source_text = "\n".join(
         str(source.get(key) or "")
-        for source in state.get("source_evidence") or []
+        for source in sources
+        if str(source.get("repo") or "") == primary or str(source.get("file_path") or "").startswith(primary + "/")
         for key in ("file_path", "function_name", "matched_text", "snippet")
     )
     searchable = f"{primary_text}\n{source_text}".lower()
+    relations: List[Dict[str, Any]] = []
     for module in modules[1:]:
         aliases = {module.lower(), module.lower().replace("_", "")}
-        if any(alias and alias in searchable for alias in aliases):
-            return True
-    return False
+        matched_alias = next((alias for alias in aliases if alias and alias in searchable), "")
+        if not matched_alias:
+            continue
+        source_match = any(
+            matched_alias in " ".join(str(source.get(key) or "") for key in ("file_path", "function_name", "matched_text", "snippet")).lower()
+            for source in sources
+            if str(source.get("repo") or "") == primary or str(source.get("file_path") or "").startswith(primary + "/")
+        )
+        if source_match:
+            evidence_type = "source"
+            refs = [str(source.get("file_path") or "") for source in sources if str(source.get("repo") or "") == primary or str(source.get("file_path") or "").startswith(primary + "/")]
+            reason = f"{primary} 源码证据引用 {module} 模块"
+        else:
+            evidence_type = "log"
+            refs = [f"{log.get('file_name', '')}:{log.get('line_no', 0)}" for log in logs if str(log.get("module_name") or "") == primary]
+            reason = f"{primary} 日志出现 {module} 关联关键词"
+        relations.append(
+            {
+                "from_module": primary,
+                "to_module": module,
+                "reason": reason,
+                "evidence_type": evidence_type,
+                "evidence_refs": list(dict.fromkeys(refs))[:10],
+            }
+        )
+    return _unique_relations(relations)
+
+
+def _unique_relations(relations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    result: List[Dict[str, Any]] = []
+    seen = set()
+    for relation in relations:
+        key = (
+            str(relation.get("from_module") or ""),
+            str(relation.get("to_module") or ""),
+            str(relation.get("evidence_type") or ""),
+        )
+        if key in seen:
+            continue
+        result.append(dict(relation))
+        seen.add(key)
+    return result
 
 
 def _log_search_text(log: Dict[str, Any]) -> str:

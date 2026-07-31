@@ -175,6 +175,9 @@ class DiagnosisWorkflowTest(unittest.TestCase):
             {source["repo"] for source in report["evidence_sources"]},
             {"interaction", "mc"},
         )
+        self.assertEqual(report["module_relations"][0]["from_module"], "interaction")
+        self.assertEqual(report["module_relations"][0]["to_module"], "mc")
+        self.assertEqual(report["module_relations"][0]["evidence_type"], "source")
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
     @patch("agent_service.app.workflow.nodes.generate_structured_report")

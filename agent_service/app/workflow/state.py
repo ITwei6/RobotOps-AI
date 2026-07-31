@@ -30,6 +30,14 @@ class Hypothesis(TypedDict, total=False):
     confidence: float
 
 
+class ModuleRelation(TypedDict, total=False):
+    from_module: str
+    to_module: str
+    reason: str
+    evidence_type: Literal["log", "source"]
+    evidence_refs: List[str]
+
+
 class GraphTraceEvent(TypedDict, total=False):
     node: str
     event: str
@@ -51,6 +59,7 @@ class DiagnosisState(TypedDict, total=False):
     history_cases: Annotated[List[Dict[str, Any]], operator.add]
     knowledge_items: Annotated[List[Dict[str, Any]], operator.add]
     hypotheses: Annotated[List[Hypothesis], operator.add]
+    module_relations: Annotated[List[ModuleRelation], operator.add]
     observations: Annotated[List[ToolObservation], operator.add]
     trace: Annotated[List[GraphTraceEvent], operator.add]
     errors: Annotated[List[str], operator.add]
