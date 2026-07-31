@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from agent_service.app.models import DiagnosisReport
 
@@ -20,31 +20,54 @@ def generate_structured_report(
     except ImportError as exc:
         raise DeepSeekUnavailable("langchain-deepseek is not installed") from exc
 
-    llm = ChatDeepSeek(model=model, temperature=0, max_retries=2)
-    structured_llm = llm.with_structured_output(DiagnosisReport)
-    prompt = _build_prompt(request, rule_report)
-    response = structured_llm.invoke(prompt)
-    if isinstance(response, DiagnosisReport):
-        return response.model_dump()
-    if isinstance(response, dict):
-        return DiagnosisReport(**response).model_dump()
+    try:
+        llm = ChatDeepSeek(model=model, temperature=0, max_retries=2)
+        structured_llm = llm.with_structured_output(DiagnosisReport)
+        prompt = _build_prompt(request, rule_report)
+        response = structured_llm.invoke(prompt)
+        if isinstance(response, DiagnosisReport):
+            return response.model_dump()
+        if isinstance(response, dict):
+            return DiagnosisReport(**response).model_dump()
+    except Exception as exc:
+        raise DeepSeekUnavailable(f"DeepSeek structured report failed: {exc}") from exc
     raise DeepSeekUnavailable("DeepSeek returned an unsupported structured output type")
 
 
 def _build_prompt(request: Dict[str, Any], rule_report: Dict[str, Any]) -> str:
     bug = request.get("bug", {})
-    logs = request.get("logs", [])
-    sources = request.get("sources", [])
-    history_cases = request.get("history_cases", [])
-    knowledge = request.get("knowledge", [])
+    logs = _compact_items(request.get("logs", []), limit=30)
+    sources = _compact_items(request.get("sources", []), limit=20)
+    history_cases = _compact_items(request.get("history_cases", []), limit=10)
+    knowledge = _compact_items(request.get("knowledge", []), limit=20)
     return (
-        "你是 RobotOps AI 的机器人研发 Bug 诊断 Agent。"
-        "只能基于输入的日志证据、源码证据、历史案例、知识库和规则 baseline 生成报告；"
-        "证据不足时必须降低 confidence，并提出 questions_for_human。\n\n"
+        "你是 RobotOps AI 的机器人研发 Bug 诊断 Agent。\n"
+        "你必须输出符合 DiagnosisReport schema 的结构化结果。\n"
+        "只允许基于输入的 Bug、日志证据、源码证据、历史案例、知识库和规则 baseline 生成报告。\n"
+        "不能编造日志行、源码路径、函数名、故障码或责任模块。\n"
+        "如果日志证据不足，confidence 必须 <= 0.35，并在 questions_for_human 中要求补充日志。\n"
+        "如果只有日志证据、没有源码证据，confidence 必须 <= 0.85。\n"
+        "如果规则 baseline 已经给出明确证据，最终报告必须保留这些证据或给出更低置信度。\n\n"
         f"Bug: {bug}\n"
-        f"Logs: {logs[:30]}\n"
-        f"Sources: {sources[:20]}\n"
-        f"History cases: {history_cases[:10]}\n"
-        f"Knowledge: {knowledge[:20]}\n"
+        f"Logs: {logs}\n"
+        f"Sources: {sources}\n"
+        f"History cases: {history_cases}\n"
+        f"Knowledge: {knowledge}\n"
         f"Rule baseline: {rule_report}\n"
     )
+
+
+def _compact_items(values: List[Any], *, limit: int) -> List[Any]:
+    compacted: List[Any] = []
+    for value in list(values)[:limit]:
+        if isinstance(value, dict):
+            compacted.append({key: _trim_text(item) for key, item in value.items()})
+        else:
+            compacted.append(_trim_text(value))
+    return compacted
+
+
+def _trim_text(value: Any, *, max_len: int = 800) -> Any:
+    if not isinstance(value, str):
+        return value
+    return value if len(value) <= max_len else value[:max_len] + "...[truncated]"

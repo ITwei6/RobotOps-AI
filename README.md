@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 5.2：Agent 工具取证循环初版开发
+阶段 5.3：DeepSeek 结构化报告节点加固
 ```
 
 已完成：
@@ -305,6 +305,7 @@ CHANGES.md
 - 已完成 LangGraph / LangChain / ReAct 调研，当前正在设计 `agent-service` 的 `DiagnosisState`、节点、图结构、工具边界和降级策略。
 - `agent-service` 已开始落地 LangGraph workflow skeleton，`/diagnose` 内部走 `run_diagnosis_workflow()`，无 DeepSeek API key 时 fallback 到规则报告。
 - `agent-service` 已接入 `log_context` 和 `source_search` 工具初版，可通过工作流主动拉取 log-service 上下文并检索本地 interaction 源码。
+- `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 
 当前限制：
 
@@ -312,9 +313,10 @@ CHANGES.md
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
 - `RunDiagnosis` 当前仍以调用方传入证据为主，但 Agent 已具备基于 `log_package_id` 主动拉取日志上下文的工具入口。
 - `case_search` 和 `knowledge_search` 当前仍是空实现，尚未接历史案例和知识库/RAG。
+- DeepSeek 真实 API key 场景尚未做 live 网络调用验证，当前使用 mock 覆盖结构化输出和失败降级。
 
 后续开发重心：
 
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
 - Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。
-- 下一步完善 DeepSeek 结构化报告节点，并接入历史案例、知识库/RAG 工具。
+- 下一步接入历史案例、知识库/RAG 工具，并让 C++ `RunDiagnosis` 传递 `log_package_id` 触发 Agent 自动取证。

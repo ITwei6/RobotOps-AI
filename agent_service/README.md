@@ -11,6 +11,7 @@
 - `langgraph-diagnosis-v1` 工作流骨架，内部按 `normalize_input -> rule_evidence -> planner -> tool_executor -> observation_analyzer -> report -> confidence_check -> finalize` 执行。
 - `log_context` 工具初版，调用 `log-service.GetLogContext` 获取发生时间窗口日志。
 - `source_search` 工具初版，优先用 `rg` 检索本地 interaction 源码，缺少 `rg` 时使用标准库递归文本搜索兜底。
+- DeepSeek 结构化报告节点加固：LLM 报告必须通过 `DiagnosisReport` 校验，成功时合并规则证据，失败时 fallback 到规则报告。
 
 当前策略：
 
@@ -29,7 +30,7 @@ Bug 描述 / 机器人类型 / 主模块
 后续演进：
 
 - 继续完善 LangGraph 的 `planner -> tool action -> observation -> report` 循环。
-- 继续接入历史案例检索、知识库/RAG 和 DeepSeek 结构化报告节点。
+- 继续接入历史案例检索和知识库/RAG。
 - RAG 是 Agent 的工具，不等于 Agent 本身。
 
 ## 配置
@@ -39,6 +40,9 @@ ROBOTOPS_LOG_SERVICE_URL=http://127.0.0.1:9501
 ROBOTOPS_SOURCE_SEARCH_ROOTS=../interaction:../aimrt_agent/aimrt_agent/interaction
 ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS=5
 ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS=2
+ROBOTOPS_LLM_ENABLED=true
+ROBOTOPS_LLM_MODEL=deepseek-v4-flash
+DEEPSEEK_API_KEY=<通过安全渠道注入，不写入仓库>
 ```
 
 ## 本地运行

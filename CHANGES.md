@@ -737,3 +737,73 @@ python3 -m unittest discover -s agent_service/tests
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-31 阶段 5.3：DeepSeek 结构化报告节点加固
+
+修改内容：
+
+- 加固 `agent_service/app/llm/deepseek.py`：
+  - 继续使用 `langchain-deepseek` 的 `ChatDeepSeek.with_structured_output(DiagnosisReport)`。
+  - 将 LLM 初始化、调用和结构化校验中的异常统一包装为 `DeepSeekUnavailable`。
+  - 压缩传入 prompt 的日志、源码、历史案例和知识库条目，避免无边界传入超长上下文。
+  - 在 prompt 中明确证据边界、禁止编造日志/源码/责任模块、证据不足时降低置信度。
+- 加固 `workflow.nodes.llm_report_node()`：
+  - LLM 报告生成前基于当前 state 证据重新运行规则 baseline。
+  - LLM 报告生成成功后合并规则报告中的日志证据、源码证据和人工确认问题，避免 LLM 漏掉可追溯证据。
+  - LLM 调用失败时记录 `errors`，走 `fallback_report_node`，再由 `confidence_check_node` 将置信度压到安全上限。
+- 新增 `agent_service/tests/test_deepseek.py`，用 fake `langchain_deepseek.ChatDeepSeek` 覆盖结构化输出路径，不依赖真实网络和 API key。
+- 扩展 `agent_service/tests/test_workflow.py`：
+  - 覆盖有 `DEEPSEEK_API_KEY` 且 LLM 成功时，workflow 保留规则日志和源码证据。
+  - 覆盖 LLM 失败时自动 fallback，报告仍合法且置信度不超过 0.75。
+- 更新 `README.md`、`agent_service/README.md` 和 `AGENTS.md` 当前阶段说明。
+
+原因：
+
+- 阶段 5.1 已预留 DeepSeek 节点，但只有最小调用路径，缺少失败降级和证据一致性测试。
+- RobotOps AI 的 Agent 报告必须可追溯，不能让 LLM 覆盖或丢弃规则命中的日志与源码证据。
+- 用户提供了 DeepSeek API key，但该 key 不应写入仓库、文档、测试或命令行；本阶段先用 mock 完成可重复验证的结构化报告路径。
+
+影响范围：
+
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_deepseek.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `agent_service/README.md`
+- `AGENTS.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 用户在对话中提供 DeepSeek API key；本阶段未将 key 写入任何文件、提交、测试或命令行。
+- 已通过 DeepSeek 官方文档核对当前模型名，`deepseek-v4-flash` 和 `deepseek-v4-pro` 是当前可用模型，`deepseek-chat` 和 `deepseek-reasoner` 已标注废弃。
+- 宿主机执行 `python3 -m unittest agent_service.tests.test_deepseek agent_service.tests.test_tools` 仍因缺少 `pydantic` 失败；该问题属于宿主机 Python 环境不完整，项目准验收以 `dev-env-service` 容器为准。
+- 容器内完整测试通过，证明新增 LLM mock 路径、fallback 路径和现有规则/工具路径没有回归。
+
+验证结果：
+
+- 已在 `dev-env-service` 容器中执行：
+
+```text
+cd /home/dev/workspace/RobotOps-AI
+python3 -m unittest discover -s agent_service/tests
+```
+
+- 结果：10 个测试全部通过。
+
+当前限制：
+
+- 本阶段没有使用真实 DeepSeek API key 发起 live 网络调用，避免 key 泄露到命令行和测试日志。
+- `ChatDeepSeek` 真实联网调用仍需在安全注入 `DEEPSEEK_API_KEY` 的运行环境中手动或通过安全 CI secret 验证。
+- `case_search` 和 `knowledge_search` 仍为空实现。
+
+下一步：
+
+- 接入历史案例检索工具，优先沉淀 interaction 触摸、self check、WorkerManager、ActionSkill、MoveSkill 等真实案例。
+- 接入知识库/RAG 工具，但继续保证 RAG 只作为工具，不替代 Agent 工作流和证据校验。
+- 让 `ticket-diagnosis-service.RunDiagnosis` 携带 `log_package_id`，触发 Agent 自动取证。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。

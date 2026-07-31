@@ -155,6 +155,7 @@ def llm_report_node(state: DiagnosisState) -> DiagnosisState:
             request=_request_with_state_evidence(state),
             rule_report=rule_report,
         )
+        report = _merge_report_evidence(report, rule_report)
         report["agent_version"] = "langgraph-diagnosis-v1"
         return {
             "report": DiagnosisReport(**report).model_dump(),
@@ -226,6 +227,32 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
     if tool_name == "knowledge_search":
         return {"tool_name": tool_name, "ok": True, "args": args, "result": {"knowledge_items": []}}
     return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
+
+
+def _merge_report_evidence(report: Dict[str, Any], rule_report: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(report)
+    merged["evidence_logs"] = _unique_logs(
+        list(merged.get("evidence_logs") or []) + list(rule_report.get("evidence_logs") or [])
+    )
+    merged["evidence_sources"] = _unique_sources(
+        list(merged.get("evidence_sources") or []) + list(rule_report.get("evidence_sources") or [])
+    )
+
+    questions = list(merged.get("questions_for_human") or [])
+    for question in rule_report.get("questions_for_human") or []:
+        if question not in questions:
+            questions.append(question)
+    merged["questions_for_human"] = questions
+
+    if not merged.get("possible_causes"):
+        merged["possible_causes"] = list(rule_report.get("possible_causes") or [])
+    if not merged.get("recommended_actions"):
+        merged["recommended_actions"] = list(rule_report.get("recommended_actions") or [])
+    if not merged.get("suspected_module"):
+        merged["suspected_module"] = str(rule_report.get("suspected_module") or "unknown")
+    if not merged.get("summary"):
+        merged["summary"] = str(rule_report.get("summary") or "当前证据不足，无法生成明确结论。")
+    return merged
 
 
 def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, Any], result_key: str) -> ToolObservation:

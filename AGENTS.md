@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 5.2：Agent 工具取证循环初版开发阶段
+阶段 5.3：DeepSeek 结构化报告节点加固阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架，以及 `log_context` / `source_search` 工具取证入口初版。当前阶段继续把 `planner -> tool action -> observation -> report` 做实，先让 Agent 能主动拉取日志上下文和检索 interaction 源码。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` 工具取证入口初版，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。当前阶段继续增强 LLM 报告质量、证据一致性校验和历史案例/知识库工具。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 
