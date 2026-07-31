@@ -3,18 +3,43 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 
-def search_source(*, roots: Iterable[str], timeout_seconds: float, args: Dict[str, Any]) -> Dict[str, Any]:
-    search_root = _resolve_search_root(str(args.get("repo") or ""), roots)
+def search_source(
+    *,
+    roots: Iterable[str],
+    timeout_seconds: float,
+    args: Dict[str, Any],
+    workspace_root: str = ".robotops/source-cache",
+    repositories: Dict[str, Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    module_name = str(args.get("module_name") or args.get("main_module") or "").strip()
+    repository = dict((repositories or {}).get(module_name) or {})
+    repo = str(repository.get("local_path") or repository.get("repo_url") or args.get("repo") or "")
+    branch = str(args.get("branch") or repository.get("branch") or "")
+    commit = str(args.get("commit") or repository.get("commit") or "")
+    existing_root = _resolve_search_root(repo, roots)
+    sync_repo = str(existing_root) if existing_root is not None else repo
+    sync_result = sync_source_repo(
+        repo=sync_repo,
+        workspace_root=workspace_root,
+        branch=branch,
+        commit=commit,
+        timeout_seconds=timeout_seconds,
+    )
+    if not sync_result["ok"]:
+        return {"ok": False, "sources": [], "error": sync_result["error"], "source_sync": sync_result}
+
+    search_root = Path(sync_result["local_path"]) if sync_result.get("local_path") else existing_root
     if search_root is None:
-        return {"ok": False, "sources": [], "error": "source repo not found"}
+        return {"ok": False, "sources": [], "error": "source repo not found", "source_sync": sync_result}
 
     keywords = _keywords(args.get("keywords") or [])
     if not keywords:
-        return {"ok": False, "sources": [], "error": "source keywords are empty"}
+        return {"ok": False, "sources": [], "error": "source keywords are empty", "source_sync": sync_result}
 
     max_results = max(1, min(_int_value(args.get("max_results"), 10), 50))
     branch = str(args.get("branch") or "")
@@ -42,9 +67,96 @@ def search_source(*, roots: Iterable[str], timeout_seconds: float, args: Dict[st
                 }
             )
             if len(sources) >= max_results:
-                return {"ok": True, "sources": sources}
+                return {"ok": True, "sources": sources, "source_sync": sync_result}
 
-    return {"ok": True, "sources": sources}
+    return {"ok": True, "sources": sources, "source_sync": sync_result}
+
+
+def sync_source_repo(
+    *,
+    repo: str,
+    workspace_root: str,
+    branch: str,
+    commit: str,
+    timeout_seconds: float,
+) -> Dict[str, Any]:
+    """Ensure a source repository is available locally before searching it."""
+    if not repo:
+        return {"ok": False, "action": "none", "local_path": "", "error": "source repo is empty"}
+
+    requested = Path(repo).expanduser()
+    if requested.exists() and requested.is_dir():
+        local_path = requested.resolve()
+        if (local_path / ".git").exists():
+            return _pull_existing_repo(local_path, branch, commit, timeout_seconds)
+        return {"ok": True, "action": "use_local", "local_path": str(local_path), "revision": ""}
+
+    parsed = urlparse(repo)
+    if parsed.scheme not in {"http", "https", "ssh", "git"} and not repo.endswith(".git"):
+        return {"ok": False, "action": "none", "local_path": "", "error": f"source repo path not found: {repo}"}
+
+    root = Path(workspace_root).expanduser()
+    target = root / _repo_name(repo)
+    root.mkdir(parents=True, exist_ok=True)
+    if (target / ".git").exists():
+        return _pull_existing_repo(target, branch, commit, timeout_seconds)
+
+    command = ["git", "clone"]
+    if branch:
+        command.extend(["--branch", branch])
+    command.extend([repo, str(target)])
+    result = _run_git(command, timeout_seconds)
+    if result.returncode != 0:
+        return {"ok": False, "action": "clone", "local_path": str(target), "error": _git_error(result)}
+    checkout = _checkout_revision(target, commit, timeout_seconds)
+    if not checkout["ok"]:
+        return checkout
+    return {"ok": True, "action": "clone", "local_path": str(target), "revision": checkout["revision"]}
+
+
+def _pull_existing_repo(path: Path, branch: str, commit: str, timeout_seconds: float) -> Dict[str, Any]:
+    if branch:
+        checkout_branch = _run_git(["git", "-C", str(path), "checkout", branch], timeout_seconds)
+        if checkout_branch.returncode != 0:
+            return {"ok": False, "action": "checkout", "local_path": str(path), "error": _git_error(checkout_branch)}
+    pull = _run_git(["git", "-C", str(path), "pull", "--ff-only"], timeout_seconds)
+    if pull.returncode != 0:
+        return {"ok": False, "action": "pull", "local_path": str(path), "error": _git_error(pull)}
+    checkout = _checkout_revision(path, commit, timeout_seconds)
+    if not checkout["ok"]:
+        return checkout
+    return {"ok": True, "action": "pull", "local_path": str(path), "revision": checkout["revision"]}
+
+
+def _checkout_revision(path: Path, commit: str, timeout_seconds: float) -> Dict[str, Any]:
+    if commit:
+        checkout = _run_git(["git", "-C", str(path), "checkout", "--detach", commit], timeout_seconds)
+        if checkout.returncode != 0:
+            return {"ok": False, "action": "checkout", "local_path": str(path), "error": _git_error(checkout)}
+    revision = _run_git(["git", "-C", str(path), "rev-parse", "HEAD"], timeout_seconds)
+    return {
+        "ok": revision.returncode == 0,
+        "action": "checkout" if commit else "use_local",
+        "local_path": str(path),
+        "revision": revision.stdout.strip(),
+        "error": _git_error(revision) if revision.returncode != 0 else "",
+    }
+
+
+def _run_git(command: List[str], timeout_seconds: float) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(command, check=False, capture_output=True, text=True, timeout=timeout_seconds)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(command, 1, "", str(exc))
+
+
+def _git_error(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stderr or result.stdout or "git command failed").strip()[:512]
+
+
+def _repo_name(repo: str) -> str:
+    name = Path(urlparse(repo).path or repo).name
+    return name[:-4] if name.endswith(".git") else name
 
 
 def _resolve_search_root(repo: str, roots: Iterable[str]) -> Path | None:

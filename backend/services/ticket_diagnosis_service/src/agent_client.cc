@@ -156,8 +156,9 @@ robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
 
 } // namespace
 
-AgentClient::AgentClient(std::string default_endpoint)
-    : default_endpoint_(std::move(default_endpoint)) {
+AgentClient::AgentClient(std::string default_endpoint, int timeout_ms)
+    : default_endpoint_(std::move(default_endpoint)),
+      timeout_ms_(std::max(timeout_ms, 1000)) {
 }
 
 AgentDiagnosisResult AgentClient::diagnose(
@@ -177,7 +178,7 @@ AgentDiagnosisResult AgentClient::diagnose(
         cpr::Url{endpoint + "/diagnose"},
         cpr::Header{{"Content-Type", "application/json"}},
         cpr::Body{payload},
-        cpr::Timeout{5000});
+        cpr::Timeout{timeout_ms_});
 
     result.http_status = static_cast<int>(response.status_code);
     if (response.error) {
@@ -186,6 +187,9 @@ AgentDiagnosisResult AgentClient::diagnose(
     }
     if (response.status_code < 200 || response.status_code >= 300) {
         result.message = "agent-service returned http status " + std::to_string(response.status_code);
+        if (!response.text.empty()) {
+            result.message += ": " + response.text.substr(0, 512);
+        }
         return result;
     }
 

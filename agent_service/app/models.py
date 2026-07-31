@@ -16,6 +16,7 @@ class BugContext(BaseModel):
     branch: str = ""
     commit: str = ""
     log_package_id: str = ""
+    # Deprecated compatibility field. Repository ownership belongs to the platform registry.
     source_repo: str = ""
 
 
@@ -68,3 +69,10 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: Optional[str] = None
+
+
+class SourceRepositoryConfig(BaseModel):
+    repo_url: str
+    branch: str = ""
+    commit: str = ""
+    local_path: str = ""

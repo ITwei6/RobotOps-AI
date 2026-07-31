@@ -15,6 +15,8 @@
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，按 Bug 描述、T/Q 机型、模块和日志关键词匹配。
 - `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，返回带 `source` 的参考条目。
 - C++ `ticket-diagnosis-service.RunDiagnosis` 可通过 `log_package_id` 触发 Agent 自动调用 `log-service` 获取发生时间窗口日志。
+- 平台源码仓库注册表：管理员通过 `GET /source-repositories` 查看，`PUT /source-repositories/{module_name}` 配置 `repo_url`、默认 `branch`、可选 `commit` 和 `local_path`；诊断时按 `main_module` 自动取用。
+- `source_search` 支持源码工作区同步：远程 `source_repo` 未缓存时 clone，已有 Git 仓库先 `pull --ff-only`，可按 branch/commit 固定版本后再检索。
 
 当前策略：
 
@@ -41,10 +43,13 @@ Bug 描述 / 机器人类型 / 主模块
 ```bash
 ROBOTOPS_LOG_SERVICE_URL=http://127.0.0.1:9501
 ROBOTOPS_SOURCE_SEARCH_ROOTS=../interaction:../aimrt_agent/aimrt_agent/interaction
+ROBOTOPS_SOURCE_WORKSPACE_ROOT=.robotops/source-cache
+ROBOTOPS_SOURCE_REPOSITORY_FILE=.robotops/source-repositories.json
 ROBOTOPS_CASE_SEARCH_ROOTS=knowledge/cases:docs/cases
 ROBOTOPS_KNOWLEDGE_SEARCH_ROOTS=knowledge/articles:docs/knowledge
 ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS=5
 ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS=4
+ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=120000
 ROBOTOPS_LLM_ENABLED=true
 ROBOTOPS_LLM_MODEL=deepseek-v4-flash
 DEEPSEEK_API_KEY=<通过安全渠道注入，不写入仓库>

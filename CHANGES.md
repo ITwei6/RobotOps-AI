@@ -406,6 +406,183 @@ cmake --build build -j1
 
 - 待容器编译和测试通过后提交。
 
+## 2026-07-31 阶段 5.7：三服务真实冒烟与 Agent 超时加固
+
+修改内容：
+
+- 新增 `samples/robot_20260730/`，包含 interaction、mc、agent、hds 四个模块的最小可导入日志。
+- 新增 `docs/11_three_service_smoke_test.md`，记录 log-service 导入、Bug 创建、RunDiagnosis 和 Agent 自动取证的容器内验证步骤。
+- 将 C++ `AgentClient` HTTP 超时从固定 5 秒改为 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS`，默认 120 秒，适配 DeepSeek 结构化报告调用。
+- C++ AgentClient 的非 2xx 响应现在携带最多 512 字符响应摘要，便于定位 Agent HTTP 错误。
+- 更新 `AGENTS.md`、`README.md`、`agent_service/README.md` 和三服务冒烟文档。
+
+原因：
+
+- 仅编译和 mock 测试无法确认 `RunDiagnosis -> agent-service -> log-service` 的真实 HTTP/RPC 链路。
+- 真实冒烟首次启用 DeepSeek 时，ticket-diagnosis-service 5 秒超时导致 502；关闭 LLM 的基线验证成功，证明链路正常，问题收敛到模型响应时延。
+- 生产诊断报告需要允许模型调用在合理时间内完成，同时保留可配置能力，避免所有环境被固定超时时间绑定。
+
+影响范围：
+
+- `backend/services/ticket_diagnosis_service/include/ticket_diagnosis_service/agent_client.h`
+- `backend/services/ticket_diagnosis_service/src/agent_client.cc`
+- `backend/services/ticket_diagnosis_service/src/main.cc`
+- `samples/robot_20260730/`
+- `docs/11_three_service_smoke_test.md`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 首次冒烟命令误在宿主机执行，因容器路径不存在立即退出，没有启动服务；随后改为容器内执行。
+- DeepSeek key 只通过运行时标准输入注入容器环境，没有写入文件、命令参数、日志或提交；本记录不保存 key。
+- 首次真实链路导入样例成功（4 个文件、7 条日志），但 RunDiagnosis 返回 502。
+- 关闭 LLM 的独立端口基线返回 `response.message=ok`，确认 C++、Agent 和 log-service 编排正常；随后定位到 AgentClient 原有 5000ms 固定超时。
+- 直接调用 Agent 时一次 shell 测试因手写 JSON 引号得到 422，改用 `json.dumps` 后 `/diagnose` 返回 200，确认 Agent 请求格式正常。
+- C++ 重新编译验证通过；DeepSeek live 调用在本阶段已发起，但受原 5 秒超时影响未完成最终报告，扩大超时后需再次执行 live 冒烟。
+
+验证结果：
+
+- 样例日志导入成功：`file_count=4`、`log_count=7`。
+- 关闭 LLM 三服务基线：`RunDiagnosis` 返回 `response.message=ok`。
+- 直接 Agent deterministic `/diagnose`：HTTP 200。
+- C++ `log_service` 和 `ticket_diagnosis_service` 在容器内编译成功。
+- Agent-service 全量测试基线：16 个测试全部通过。
+- 待扩大超时后的 DeepSeek live 冒烟完成后补充最终结果。
+
+当前限制：
+
+- 三服务仍使用内存 store，重启后日志和 Bug 数据会丢失。
+- DeepSeek live 结果依赖账号额度、模型可用性和网络；本阶段已验证调用路径，但原超时问题修复后的最终 live 结果仍待复测。
+
+下一步：
+
+- 用 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=120000` 重跑 DeepSeek 三服务冒烟，确认真实结构化报告和自动日志证据均返回。
+- 后续将冒烟流程固化为 CI 或集成测试，并继续替换本地知识索引为 knowledge-service/向量检索。
+
+是否已提交 Git：
+
+- 待扩大超时后的 live 冒烟和全量测试完成后提交。
+
+## 2026-07-31 阶段 5.8：源码仓库同步与源码感知诊断
+
+修改内容：
+
+- 扩展 `source_tool.search_source()`：源码检索前先确保 source workspace 可用。
+- 本地已有 Git 仓库执行 `git pull --ff-only`；远程仓库未缓存时 clone 到 `ROBOTOPS_SOURCE_WORKSPACE_ROOT`；可按 branch/commit checkout 固定版本。
+- 非 Git 本地目录继续直接复用，兼容现有 interaction 源码挂载和单元测试。
+- 新增 `source_sync` 结果元数据，记录 `action`、`local_path` 和 revision；同步失败时不生成源码证据并返回可诊断错误。
+- 新增源码同步测试，覆盖已有仓库 pull 和远程仓库失败降级。
+- 更新 `AGENTS.md`、`README.md`、`agent_service/README.md`，明确源码仓库是 Agent 的主要分析依赖。
+
+原因：
+
+- Agent 的源码证据不能依赖调用方手工把代码提前放在某个目录；诊断输入包含 `source_repo` 时，应由 Agent 管理可复现的本地源码工作区。
+- 已有本地仓库必须先更新，否则报告可能引用旧分支或旧提交；指定 commit 时需要固定到对应版本，避免源码证据与 Bug 软件版本不一致。
+- 同步失败必须显式降级，不能用历史路径或猜测内容伪造源码证据。
+
+影响范围：
+
+- `agent_service/app/settings.py`
+- `agent_service/app/tools/source_tool.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_source_sync.py`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 三服务 live 冒烟在扩大 C++ 超时后已返回成功任务，但首次报告无日志证据；随后隔离验证确认 Agent + log-service 直接调用可返回 2 条日志，源码同步因此作为下一条核心能力推进。
+- C++ 关闭 LLM 基线和显式 endpoint 均返回 `ok`，但当前报告证据为空，后续需继续检查 C++ 到 Agent 的请求上下文记录；本阶段不伪造“已完成全链路证据”。
+- 源码同步命令使用参数数组调用 `git`，不拼接 shell 命令，避免仓库 URL、branch 或 commit 注入 shell。
+- API key 仍只通过运行时标准输入使用，不写入源码同步逻辑、测试、文档或提交。
+
+验证结果：
+
+- 首次全量测试为 20 个测试、1 个失败；失败是源码同步测试对 mock 参数位置的断言错误，已修正测试断言。
+- 修正后容器内 Agent 全量测试为 20 个测试全部通过。
+- C++ `ticket_diagnosis_service` 在容器内编译成功。
+- `py_compile` 和 `git diff --check` 通过。
+
+当前限制：
+
+- 尚未对私有仓库认证做实现；SSH key、HTTPS token 等凭据必须由运行环境提供，不能由 Agent 保存。
+- `pull --ff-only` 遇到本地未提交改动会失败并降级，避免自动覆盖开发者源码。
+- `source_search` 仍是文本检索和启发式函数名推断，尚未接 source-index-service、clangd 或 tree-sitter。
+
+下一步：
+
+- 完成 C++ AgentClient 请求上下文可观测性，确保 `source_repo`、`log_package_id` 和 endpoint 在服务间可追踪。
+- 使用真实 interaction Git 仓库验证 clone/pull/commit 与源码证据版本一致。
+
+是否已提交 Git：
+
+- 待源码同步测试和全量验证通过后提交。
+
+## 2026-07-31 阶段 5.9：平台源码仓库注册表
+
+修改内容：
+
+- 新增 `agent_service/app/source_registry.py`，以 JSON 文件持久化模块源码仓库配置。
+- 新增 `GET /source-repositories` 和 `PUT /source-repositories/{module_name}` 管理接口，支持配置 `repo_url`、默认 `branch`、可选 `commit` 和 `local_path`。
+- `source_search` 优先按 `main_module` 从平台注册表读取仓库，不再要求测试人员在每个 Bug 中填写源码地址；旧 `source_repo` 字段保留为兼容兜底。
+- 新增 `ROBOTOPS_SOURCE_REPOSITORY_FILE` 配置和注册表持久化测试。
+- 更新 `AGENTS.md`、`README.md`、`agent_service/README.md` 和三服务冒烟文档，明确测试人员输入边界。
+
+原因：
+
+- 测试人员只负责提供 Bug 现象、发生时间和日志包，不应承担维护 interaction、mc、agent、hds 等源码仓库地址的职责。
+- 源码仓库属于平台基础配置，应首次由管理员录入，后续由 Agent 根据问题模块自动 clone/pull；只有仓库管理员需要时才通过管理接口修改。
+- 按模块维护仓库可以避免 Bug 请求携带错误仓库，也便于后续统一管理分支、版本和访问凭据。
+
+影响范围：
+
+- `agent_service/app/source_registry.py`
+- `agent_service/app/models.py`
+- `agent_service/app/settings.py`
+- `agent_service/app/main.py`
+- `agent_service/app/tools/source_tool.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_source_registry.py`
+- `agent_service/tests/test_source_sync.py`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `docs/11_three_service_smoke_test.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 根据用户澄清，将“测试人员填写 source_repo”调整为“平台管理员维护模块仓库注册表”。
+- planner 已改为传递 `module_name`，source tool 按模块读取 registry；`BugContext.source_repo` 只保留兼容旧请求，不再作为主流程设计。
+- 注册表写入采用临时文件替换，避免进程中断留下半截 JSON；仓库凭据不由接口或 Agent 保存。
+- 源码同步仍使用 subprocess 参数数组执行 git，不拼接 shell 命令。
+
+验证结果：
+
+- 容器内 Agent 全量测试通过：21 个测试全部 `OK`，包含注册表管理函数、模块配置持久化和源码 pull/clone 降级测试。
+- C++ `ticket_diagnosis_service` 在容器内编译成功。
+- `py_compile` 和 `git diff --check` 通过。
+
+当前限制：
+
+- 当前管理接口没有接入登录鉴权，只适合内部 MVP 环境；生产环境必须放在管理权限和 HTTPS 之后。
+- JSON 注册表是单实例本地配置，多实例部署时需要迁移到配置中心或 source-repository-service。
+- 私有 Git 仓库认证仍依赖运行环境已有 SSH/HTTPS 凭据，不由平台接口传入。
+
+下一步：
+
+- 增加注册表接口鉴权和模块配置校验。
+- 使用真实 interaction、mc、agent 仓库验证 clone/pull/branch/commit 后的源码证据版本。
+
+是否已提交 Git：
+
+- 待本阶段全量验证通过后提交。
+
 ## 2026-07-31 阶段 5.5：知识库检索工具接入
 
 修改内容：

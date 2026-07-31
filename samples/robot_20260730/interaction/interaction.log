@@ -1,5 +1,6 @@
 2026-07-30 15:32:10.120 INFO Received touch event type: 1
 2026-07-30 15:32:10.130 INFO Processing touch event type: 1, force_confused: false, self_check_state: 2
+2026-07-30 15:32:09.900 INFO touch event received: panel=front
 2026-07-30 15:32:10.150 WARN Current action is DAMPING_DEFAULT or PASSIVE_DEFAULT, ignore touch trigger, action_id: 100
+2026-07-30 15:32:10.200 INFO touch task not created because checker returned false
 2026-07-30 15:32:10.170 INFO touch task not created because checker returned false
-

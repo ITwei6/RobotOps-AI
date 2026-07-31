@@ -7,6 +7,7 @@ from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structu
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
+from agent_service.app.source_registry import load_repositories
 from agent_service.app.tools import fetch_log_context, search_cases, search_knowledge, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
@@ -80,7 +81,7 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                     "tool_name": "source_search",
                     "reason": "根据日志关键句定位 interaction 源码。",
                     "args": {
-                        "repo": bug.get("source_repo", "interaction"),
+                        "module_name": bug.get("main_module", "interaction"),
                         "branch": bug.get("branch", ""),
                         "commit": bug.get("commit", ""),
                         "module_name": bug.get("main_module", "interaction"),
@@ -261,6 +262,8 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
             roots=settings.source_search_roots,
             timeout_seconds=settings.tool_timeout_seconds,
             args=args,
+            workspace_root=settings.source_workspace_root,
+            repositories=load_repositories(settings.source_repository_file),
         )
         return _tool_observation(tool_name, args, result, "sources")
     if tool_name == "case_search":

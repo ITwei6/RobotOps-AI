@@ -1,3 +1,4 @@
 2026-07-30 15:32:09.900 INFO McCommonState updated: current_form=BIPED, curr_action_id=100, player_state=IDLE
+2026-07-30 15:32:09.800 INFO current action changed to PASSIVE_DEFAULT
 2026-07-30 15:32:10.160 INFO current action remains PASSIVE_DEFAULT, is_moving=false
-
+2026-07-30 15:32:10.170 WARN SetMcAction is not requested because action is not executable
