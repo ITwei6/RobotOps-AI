@@ -215,6 +215,15 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["evidence_sources"], [])
         generate_structured_report.assert_called_once()
 
+    @patch("agent_service.app.workflow.nodes.search_source", side_effect=RuntimeError("local source unavailable"))
+    def test_workflow_keeps_running_when_langchain_tool_raises(self, search_source):
+        report = run_diagnosis_workflow(self.touch_payload)
+
+        self.assertEqual(report["suspected_module"], "interaction")
+        self.assertTrue(report["evidence_logs"])
+        self.assertLessEqual(report["confidence"], 0.85)
+        search_source.assert_called_once()
+
     def test_workflow_adds_historical_case_as_reference(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             Path(tmpdir, "cases.json").write_text(

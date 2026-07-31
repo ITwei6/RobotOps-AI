@@ -2,6 +2,48 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.5：Agent Tool 异常隔离与证据状态
+
+修改内容：
+
+- `workflow.nodes._execute_tool()` 捕获 LangChain Tool 的输入校验和运行时异常，统一转成失败 observation，不再让单个模块源码工具异常中断整条 Agent 工作流。
+- `source_sync` 状态会随 source tool observation 保留，记录本地源码使用、pull、clone 或 checkout 的状态和 revision。
+- 新增源码工具异常回归测试，验证主模块源码不可用时仍能生成带日志证据的低置信度诊断报告。
+
+原因：
+
+- 多模块诊断中，某个 `mc`、`hal`、`hds` 或 `sm` 仓库不可用是可预期情况，不能因此丢失其他模块日志和规则分析结果。
+- Agent 报告需要知道源码工具是否成功、源码版本是否同步，避免把工具失败误当成没有源码证据。
+
+影响范围：
+
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 在 LangChain `StructuredTool.invoke()` 外层增加异常隔离。
+- 保留 source tool 的 `source_sync` 元数据进入 observation，未将其伪装成源码证据。
+- 通过 workflow 回归确认工具失败后仍按规则 baseline 完成报告，并压低置信度。
+
+验证结果：
+
+- Agent 全量测试：25 个测试全部通过。
+- `git diff --check`：待提交前执行。
+
+下一步：
+
+- 为每个模块建立更明确的证据关联状态，记录主模块为何触发 `mc`、`hal`、`hds`、`sm` 检索。
+- 增加 LangChain Tool 的独立 schema、超时和 source revision 测试。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-31 阶段 6.4：多模块时间窗口与 LangChain Tool 接入
 
 修改内容：

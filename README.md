@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 6.4：多模块时间窗口与 LangChain Tool 接入
+阶段 6.5：Agent Tool 异常隔离与证据状态
 ```
 
 已完成：
@@ -330,6 +330,7 @@ CHANGES.md
 - 本阶段已验证本地 interaction 源码能返回真实文件路径、`T1Checker::CheckTouch` 函数名、匹配文本和代码片段。
 - 源码证据会附带平台注册的本地 branch/commit；本地 Git 工作区同步返回的 revision 也会作为证据版本。
 - 诊断报告新增 `execution_chain`，当前已实现触摸事件进入 interaction、`CheckTouch` 拦截、未进入任务创建/派发阶段的执行链表达。
+- LangChain Tool 的输入校验、异常和源码同步状态会进入 LangGraph observation；单个模块工具失败不会中断整条诊断流程。
 - 日志上下文按发生时间窗口获取全部模块；源码先分析 `main_module`，发现主链路引用其他模块后，再按需检索 `mc`、`hal_*`、`hds`、`sm` 等模块源码。
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。

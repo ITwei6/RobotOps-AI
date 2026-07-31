@@ -269,7 +269,16 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
     tool = tools.get(tool_name)
     if tool is None:
         return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
-    result = tool.invoke(args)
+    try:
+        result = tool.invoke(args)
+    except Exception as exc:
+        return {
+            "tool_name": tool_name,
+            "ok": False,
+            "args": args,
+            "result": {},
+            "error": f"{tool_name} invocation failed: {exc}",
+        }
     result = result if isinstance(result, dict) else {"value": result}
     result_key = {
         "log_context": "logs",
@@ -338,6 +347,8 @@ def _merge_knowledge_context(report: Dict[str, Any], items: List[Dict[str, Any]]
 def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, Any], result_key: str) -> ToolObservation:
     ok = bool(result.get("ok"))
     payload = {result_key: list(result.get(result_key) or [])}
+    if "source_sync" in result:
+        payload["source_sync"] = dict(result.get("source_sync") or {})
     observation: ToolObservation = {"tool_name": tool_name, "ok": ok, "args": args, "result": payload}
     if not ok:
         observation["error"] = str(result.get("error") or f"{tool_name} failed")
