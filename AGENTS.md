@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 5.9：平台源码仓库注册表阶段
+阶段 6.0：诊断日志包关联修复阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。当前阶段已将源码仓库改为平台侧按模块维护的注册表，测试人员只需提供 Bug 现象、时间和日志包等诊断信息。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。当前阶段已修复日志导入 bug_id 与诊断生成 bug_id 不一致时的 package 上下文取证问题，并完成真实三服务验证。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

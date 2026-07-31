@@ -45,6 +45,9 @@ class LogToolTest(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["logs"][0]["line_no"], 7)
+        payload = urlopen.call_args.args[0].data.decode("utf-8")
+        self.assertIn('"bug_id": ""', payload)
+        self.assertIn('"package_id": "pkg-1"', payload)
 
 
 class SourceToolTest(unittest.TestCase):

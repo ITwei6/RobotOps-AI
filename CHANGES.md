@@ -517,6 +517,8 @@ cmake --build build -j1
 下一步：
 
 - 完成 C++ AgentClient 请求上下文可观测性，确保 `source_repo`、`log_package_id` 和 endpoint 在服务间可追踪。
+- 增加 C++ AgentClient 脱敏请求审计日志，记录 endpoint、Bug、日志包是否存在、模块和手工证据数量，不记录完整请求或凭据。
+- 修复 `log_context` 过滤问题：存在唯一 `package_id` 时不再同时传递可能由 ticket store 新生成的 `bug_id`，避免导入日志和诊断 Bug ID 不一致导致上下文为空。
 - 使用真实 interaction Git 仓库验证 clone/pull/commit 与源码证据版本一致。
 
 是否已提交 Git：
@@ -582,6 +584,59 @@ cmake --build build -j1
 是否已提交 Git：
 
 - 待本阶段全量验证通过后提交。
+
+## 2026-07-31 阶段 6.0：诊断日志包关联修复
+
+修改内容：
+
+- 修改 `agent_service/app/tools/log_tool.py`：当请求带有 `log_package_id` 时，将 `bug_id` 置空，只使用 package_id 查询日志上下文。
+- 新增工具测试，验证 package_id 存在时请求 payload 不携带 bug_id。
+- 增加 C++ `AgentClient` 脱敏请求审计日志，记录 endpoint、bug_id、日志包是否存在、模块和手工证据数量，不记录完整 payload。
+- 更新阶段文档，明确日志包是跨服务稳定关联键。
+
+原因：
+
+- 真实三服务冒烟发现，日志导入使用的 bug_id 可能来自外部系统，而 `ticket-diagnosis-service` 内存 store 创建 Bug 时会生成新的 bug_id。
+- `log-service` 原先同时按 bug_id 和 package_id 过滤，两个 ID 不一致时返回空日志，导致 Agent 输出低置信度报告。
+- package_id 在日志包和 Bug 单之间是稳定关联键，有 package_id 时不应再附带可能过期的 bug_id。
+
+影响范围：
+
+- `agent_service/app/tools/log_tool.py`
+- `agent_service/tests/test_tools.py`
+- `backend/services/ticket_diagnosis_service/src/agent_client.cc`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 临时回显 Agent 测试脚本两次因 Python 单行 handler 语法错误未启动，未产生项目代码影响；随后通过脱敏 C++ 审计日志确认 C++ 已正确识别 `log_package_id`。
+- 审计验证显示 C++ 请求包含日志包，进一步用不同导入 bug_id 和诊断 bug_id 重现空证据问题，定位到 log-service 双字段过滤。
+- 修复后真实三服务验证成功：日志导入 4 个文件、7 条日志，RunDiagnosis 返回 `response.message=ok`、`interaction`、4 条日志证据和置信度 0.85。
+- API key 未参与本次修复测试，不写入代码、日志或提交。
+
+验证结果：
+
+- 容器内 Agent 全量测试：21 个全部通过。
+- `py_compile` 和 `git diff --check`：通过。
+- C++ `ticket_diagnosis_service` 构建：通过。
+- 真实 C++ -> agent-service -> log-service 链路：日志证据 4 条，`suspected_module=interaction`，置信度 0.85。
+
+当前限制：
+
+- 三服务仍使用内存 store；生产环境需要数据库中的 Bug、日志包和日志索引统一关联。
+- DeepSeek live 报告还需要在 package 关联修复后重新验证，之前 live 请求虽然任务成功，但因 package 过滤问题报告没有日志证据。
+
+下一步：
+
+- 在 package 关联修复基础上重新执行 DeepSeek live 三服务冒烟，确认结构化报告保留 4 条日志证据。
+- 完善 C++ 请求和 Agent workflow trace 的统一诊断任务追踪。
+
+是否已提交 Git：
+
+- 待本阶段提交。
 
 ## 2026-07-31 阶段 5.5：知识库检索工具接入
 

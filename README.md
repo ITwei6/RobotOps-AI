@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 5.9：平台源码仓库注册表
+阶段 6.0：诊断日志包关联修复
 ```
 
 已完成：
@@ -326,3 +326,4 @@ CHANGES.md
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。
 - 测试人员输入保持聚焦于 Bug 现象、发生时间、机器人类型/模块和日志包；仓库更新由 Agent 根据平台注册表自动完成。
+- 日志上下文查询优先使用唯一 `log_package_id`，避免日志导入时的外部 bug_id 与平台新生成 Bug ID 不一致导致证据为空。

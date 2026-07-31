@@ -6,9 +6,12 @@ from urllib import error, request
 
 
 def fetch_log_context(*, log_service_url: str, timeout_seconds: float, args: Dict[str, Any]) -> Dict[str, Any]:
+    package_id = str(args.get("package_id") or args.get("log_package_id") or "")
     payload = {
-        "bug_id": str(args.get("bug_id") or ""),
-        "package_id": str(args.get("package_id") or args.get("log_package_id") or ""),
+        # package_id is the stable identity across BugTicket and imported logs.
+        # Do not add a stale/generated bug_id when the package is already known.
+        "bug_id": "" if package_id else str(args.get("bug_id") or ""),
+        "package_id": package_id,
         "module_name": str(args.get("module_name") or ""),
         "center_time": _int_value(args.get("center_time") or args.get("occurred_time")),
         "before_ms": _seconds_to_ms(args.get("seconds_before"), default_ms=300_000),

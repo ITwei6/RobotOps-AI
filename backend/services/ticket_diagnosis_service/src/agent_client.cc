@@ -6,6 +6,8 @@
 #include <sstream>
 #include <utility>
 
+#include "log.h"
+
 namespace robotops::ticket_diagnosis_service {
 namespace {
 
@@ -174,6 +176,16 @@ AgentDiagnosisResult AgentClient::diagnose(
     }
 
     const auto payload = writeJson(buildRequestJson(ticket, request));
+    const std::string package_id = request.log_package_id().empty()
+        ? ticket.log_package_id()
+        : request.log_package_id();
+    INF("agent diagnose request: endpoint={}, bug_id={}, log_package_id_present={}, main_module={}, logs={}, sources={}",
+        endpoint,
+        ticket.bug_id(),
+        !package_id.empty(),
+        ticket.main_module(),
+        request.logs_size(),
+        request.sources_size());
     const auto response = cpr::Post(
         cpr::Url{endpoint + "/diagnose"},
         cpr::Header{{"Content-Type", "application/json"}},
