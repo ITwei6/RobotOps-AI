@@ -254,7 +254,22 @@ source-index-service
 
 Web 视觉和产品组织方式参考 `qinshihu/itops-agent-platform` 这类运维 Agent 平台：重点是清晰呈现“输入、分析、执行、证据、结论”的闭环，而不是做一个普通表格后台。
 
-当前已提供 `frontend/` Web 工作台 MVP，使用 React + TypeScript + Vite + Lucide。开发服务器默认监听 `4173`，`/api` 请求通过 Vite 代理到本地 `ticket-diagnosis-service`；后端不可用时页面保留可识别的演示报告，不阻塞前端联调。运行方式：
+当前已提供 `frontend/` Web 工作台 MVP，使用 React + TypeScript + Vite + Lucide。开发服务器默认监听 `4173`，`/api` 请求通过 Vite 代理到本地 `ticket-diagnosis-service`。完整联调环境一键启动：
+
+```bash
+./scripts/run_dev_stack.sh
+```
+
+脚本启动并连通以下端口：
+
+```text
+9001  log-service
+9002  ticket-diagnosis-service
+9003  agent-service
+4173  web-console
+```
+
+如需启用 DeepSeek，先在当前终端通过安全方式设置 `DEEPSEEK_API_KEY`，再执行脚本。未设置时 Agent 使用 deterministic fallback。只启动前端的方式：
 
 ```bash
 cd frontend

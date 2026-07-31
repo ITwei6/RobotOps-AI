@@ -11,6 +11,12 @@ npm run dev -- --host 0.0.0.0
 
 默认地址：`http://127.0.0.1:4173`。
 
+需要前端、C++ 服务和 Agent 全部联通时，在项目根目录执行：
+
+```bash
+./scripts/run_dev_stack.sh
+```
+
 ## Views
 
 - 总览：诊断摘要、模块信号、证据时间线和下一步动作。
@@ -20,7 +26,7 @@ npm run dev -- --host 0.0.0.0
 
 ## API
 
-页面提交 Bug 分析时请求 `POST /api/diagnose`。Vite 开发代理默认将 `/api` 转发到 `http://127.0.0.1:20002`，因此前端不直接访问数据库或 Agent 内部服务。后端暂不可用时，页面会显示 API 不可用提示并保留演示报告，方便先验证交互和视觉结构。
+页面提交 Bug 分析时依次请求 `POST /api/CreateBugTicket` 和 `POST /api/RunDiagnosis`。Vite 开发代理默认将 `/api` 转发到 Docker 映射的 `http://127.0.0.1:9002/robotops.ticket_diagnosis.TicketDiagnosisService`，再由 C++ 服务调用 Agent，Agent 按需调用 log-service。前端不直接访问数据库或 Agent 内部服务。
 
 ## Design System
 

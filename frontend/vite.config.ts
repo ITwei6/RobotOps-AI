@@ -7,9 +7,9 @@ export default defineConfig({
     port: 4173,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:20002",
+        target: "http://127.0.0.1:9002",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ""),
+        rewrite: (path) => path.replace(/^\/api/, "/robotops.ticket_diagnosis.TicketDiagnosisService"),
       },
     },
   },

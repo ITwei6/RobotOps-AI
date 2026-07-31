@@ -2,6 +2,57 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 7.1：Web 与三服务完整联调
+
+修改内容：
+
+- 将前端诊断提交从直连 `/api/diagnose` 改为真实业务链路：先调用 `CreateBugTicket`，再以返回的 `bug_id` 调用 `RunDiagnosis`。
+- 将 Vite `/api` 代理切换到 Docker 映射端口 `9002`，统一转发到 `TicketDiagnosisService` HTTP JSON 接口。
+- 增加真实 C++ 报告响应兼容处理；当前 proto 未透传 `execution_chain` 和 `module_relations` 时使用明确的流程占位，避免页面运行时异常。
+- 新增 `scripts/run_dev_stack.sh`，一键启动 `9001` log-service、`9003` agent-service、`9002` ticket-diagnosis-service，导入样例日志并启动 `4173` Web 工作台。
+- 启动脚本支持从当前 shell 安全透传 `DEEPSEEK_API_KEY`；未设置时明确使用 deterministic fallback，不将密钥值写入仓库或命令参数。
+
+原因：
+
+- 前端演示数据无法证明 C++ 编排服务、Agent、日志服务已经联通。
+- Docker 只映射 `9000-9004`，原前端代理端口 `20002` 无法访问容器内服务。
+- 完整业务流程必须由 C++ 服务创建 Bug、创建诊断任务并保存报告，而不是由浏览器直接调用 Agent。
+
+影响范围：
+
+- `frontend/src/App.tsx`
+- `frontend/vite.config.ts`
+- `frontend/README.md`
+- `scripts/run_dev_stack.sh`
+- `README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 检查发现旧 C++ 实例实际监听 `9501/9502`，宿主机不可访问；重新在 Docker 映射端口 `9001/9002` 启动，并在 `9003` 启动 Agent。
+- 容器内确认 interaction 源码位于 `/home/dev/workspace/interaction`，Agent 启动时配置为源码搜索根目录。
+- 向 log-service 导入 `samples/robot_20260730`，共识别 4 个模块日志文件和 16 条日志。
+- 先直接验证 C++ 两步接口，再通过 Vite `/api` 代理重复验证同一流程。
+
+验证结果：
+
+- `log-service`、`ticket-diagnosis-service`、`agent-service` 健康检查全部通过。
+- 前端代理创建 `bug-000002` 成功，诊断任务 `diag-task-000002` 状态为 `TASK_STATUS_SUCCEEDED`。
+- 真实报告疑似模块为 `interaction`，返回 4 条日志证据、0.85 置信度和修复建议。
+- `frontend/npm run build`：通过，Vite 生产构建生成成功。
+- `scripts/run_dev_stack.sh`：通过，能识别三项后端与前端均已运行，并重复导入样例日志。
+- `git diff --check`：通过。
+
+下一步：
+
+- 扩展 C++ `DiagnosisReport` proto，完整透传 Agent 的 `execution_chain` 和 `module_relations`。
+- 增加页面级后端健康检查，进入页面时直接显示四项服务连接状态。
+- 在安全注入 DeepSeek key 的终端重新启动 Agent，验证真实 LLM 结构化报告路径。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-07-31 阶段 7.0：Web 诊断工作台 MVP
 
 修改内容：
