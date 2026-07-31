@@ -41,7 +41,7 @@
 
 下一步：
 
-- 使用平台管理员配置的真实 interaction 仓库 URL 做 clone/pull、branch/commit 固定和源码证据 live smoke。
+- 使用现有本地 `interaction` 源码目录验证 source search 和真实源码证据返回；远程 Git 仓库 URL、clone/pull、branch/commit 固定验证待仓库具备后再进行。
 - 继续将 interaction 的 `CheckTouch`、`CheckMove`、`TaskFactory`、`WorkerManager`、`ActionSkill` 和 `MoveSkill` 排障经验沉淀为可检索证据与历史案例。
 
 是否已提交 Git：
