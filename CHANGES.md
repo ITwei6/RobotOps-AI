@@ -2,6 +2,49 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.2：本地 interaction 源码证据链
+
+修改内容：
+
+- 增强 `agent_service/app/tools/source_tool.py`：本地源码注册配置的 branch/commit 会附加到真实源码证据；没有显式 commit 时，使用本地 Git 工作区同步返回的 revision。
+- 修复 C++ 函数识别：命中 `AIMRTE_WARN` 等全大写日志宏或函数体内部调用时，继续向外识别真实的 `T1Checker::CheckTouch` 等方法定义，不把日志宏或 `StateManager::GetInstance` 误报为函数名。
+- 新增本地 registry 元数据、日志宏函数识别测试。
+- 使用现有本地 interaction 源码完成真实 source search，确认返回 `interaction/src/scheduler/checker/t1_checker.cpp`、`T1Checker::CheckTouch` 和代码片段。
+
+原因：
+
+- 当前没有可用于远程 clone/pull 验证的独立源码仓库，阶段验证必须基于本地 interaction 源码完成。
+- 源码证据只有在文件路径、函数名、匹配文本和上下文片段可信时，才适合进入诊断报告供开发工程师追溯。
+
+影响范围：
+
+- `agent_service/app/tools/source_tool.py`
+- `agent_service/tests/test_tools.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 发现本地源码中日志关键句命中 `AIMRTE_WARN` 后，旧函数识别器会返回日志宏名；增加“优先识别带类名的方法定义、跳过全大写宏”的解析规则。
+- 在 `dev-env-service` 容器内对现有本地 interaction 源码执行 source search，未访问远程仓库。
+
+验证结果：
+
+- Agent 全量测试：23 个测试全部通过。
+- 本地源码 live smoke：返回 `interaction/src/scheduler/checker/t1_checker.cpp`、`T1Checker::CheckTouch` 和非空 snippet。
+- `git diff --check`：待提交前执行。
+
+下一步：
+
+- 基于本地 interaction 源码继续沉淀 `CheckTouch`、`CheckMove`、`TaskFactory`、`WorkerManager`、`ActionSkill` 和 `MoveSkill` 的证据规则。
+- 远程 Git 仓库具备后，再单独验证 clone/pull 和 branch/commit 固定。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-31 阶段 6.1：源码证据真实性与 Agent 取证路由修复
 
 修改内容：

@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 6.1：源码证据真实性与 Agent 取证路由修复
+阶段 6.2：本地 interaction 源码证据链
 ```
 
 已完成：
@@ -327,6 +327,8 @@ CHANGES.md
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。
 - Agent 工具路由已记录失败工具的尝试状态，源码仓库未配置时不会重复消耗工具轮次，仍可继续检索历史案例和知识库。
 - 当前源码验证以本地 `interaction` 源码目录为准；远程 Git 仓库暂未提供，clone/pull live 验证延后。
+- 本阶段已验证本地 interaction 源码能返回真实文件路径、`T1Checker::CheckTouch` 函数名、匹配文本和代码片段。
+- 源码证据会附带平台注册的本地 branch/commit；本地 Git 工作区同步返回的 revision 也会作为证据版本。
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。
 - 测试人员输入保持聚焦于 Bug 现象、发生时间、机器人类型/模块和日志包；仓库更新由 Agent 根据平台注册表自动完成。

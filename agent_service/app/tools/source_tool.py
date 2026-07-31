@@ -42,8 +42,8 @@ def search_source(
         return {"ok": False, "sources": [], "error": "source keywords are empty", "source_sync": sync_result}
 
     max_results = max(1, min(_int_value(args.get("max_results"), 10), 50))
-    branch = str(args.get("branch") or "")
-    commit = str(args.get("commit") or "")
+    evidence_branch = branch
+    evidence_commit = commit or str(sync_result.get("revision") or "")
     sources: List[Dict[str, Any]] = []
     seen = set()
 
@@ -58,8 +58,8 @@ def search_source(
             sources.append(
                 {
                     "repo": search_root.name,
-                    "branch": branch,
-                    "commit": commit,
+                    "branch": evidence_branch,
+                    "commit": evidence_commit,
                     "file_path": _display_path(search_root, match["path"]),
                     "function_name": _function_name(match["path"], int(match["line_no"])),
                     "matched_text": keyword,
@@ -276,6 +276,17 @@ def _function_name(path: Path, line_no: int) -> str:
     except OSError:
         return ""
 
+    # Prefer an actual qualified method definition. Calls inside the matched
+    # line, such as StateManager::GetInstance(), must not shadow the owner.
+    for idx in range(min(line_no - 1, len(lines) - 1), max(-1, line_no - 80), -1):
+        text = lines[idx].strip()
+        match = re.search(
+            r"\b([A-Za-z_]\w*(?:::[A-Za-z_]\w*)+)\s*\([^;]*\)\s*(?:const\s*)?\{",
+            text,
+        )
+        if match and not text.startswith(("if ", "for ", "while ", "switch ")):
+            return match.group(1)
+
     signature = ""
     for idx in range(min(line_no - 1, len(lines) - 1), max(-1, line_no - 80), -1):
         text = lines[idx].strip()
@@ -291,6 +302,7 @@ def _function_name(path: Path, line_no: int) -> str:
             and "{" in signature
             and "<<" not in signature
             and not signature.startswith(("if ", "for ", "while ", "switch ", "return "))
+            and not re.fullmatch(r"[A-Z][A-Z0-9_]*", match.group(1))
         ):
             return match.group(1)
     return ""
