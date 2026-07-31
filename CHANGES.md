@@ -2,6 +2,53 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 7.2：DeepSeek 真实结构化报告联调
+
+修改内容：
+
+- 将用户提供的 `DEEPSEEK_API_KEY` 仅注入运行中的 `agent-service` 进程环境，启用 `ROBOTOPS_LLM_ENABLED=true` 和 `deepseek-v4-flash`，未写入仓库、脚本或配置文件。
+- 将 `ChatDeepSeek.with_structured_output` 从默认 function calling 切换为 `method="json_mode"`。
+- 在 DeepSeek prompt 中显式加入 `DiagnosisReport.model_json_schema()`，要求只输出 JSON 对象，再由 Pydantic 严格校验。
+- 扩展 DeepSeek 单元测试，验证 `json_mode` 参数和 prompt 中的 schema 字段。
+
+原因：
+
+- `deepseek-v4-flash` thinking mode 不支持 LangChain 默认结构化输出使用的 `tool_choice`，真实调用返回 HTTP 400。
+- JSON mode 不会自动把 Pydantic schema 发送给模型；只要求“符合 DiagnosisReport”不足以保证必填字段完整。
+
+影响范围：
+
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/tests/test_deepseek.py`
+- `agent_service/README.md`
+- `README.md`
+- `AGENTS.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 首先确认 Agent 进程已注入密钥且 LLM 开关为 true，没有输出密钥值。
+- 直接调用 DeepSeek API 返回 HTTP 200，确认密钥、网络和 `deepseek-v4-flash` 模型均可用。
+- 复现 LangChain 异常为 `Thinking mode does not support this tool_choice`，据此切换 `json_mode`。
+- 简单 JSON mode 调用成功后，继续定位完整报告仍 fallback 的原因，最终补充完整 Pydantic JSON schema。
+
+验证结果：
+
+- DeepSeek HTTP live 调用：200。
+- DeepSeek/工作流定向测试：10 个测试全部通过。
+- 完整链路 `bug-000005 -> diag-task-000005`：成功，真实 DeepSeek 报告未触发 fallback 上限，置信度为 0.85。
+- Agent 全量测试：25 个测试全部通过。
+- `git diff --check`：通过。
+
+下一步：
+
+- 将 LLM 执行状态和 fallback 原因作为非敏感诊断元数据透传到 C++ 报告和前端，避免仅通过置信度推断。
+- 扩展 C++ proto，透传 `execution_chain` 和 `module_relations`。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-07-31 阶段 7.1：Web 与三服务完整联调
 
 修改内容：

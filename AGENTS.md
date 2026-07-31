@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 7.0：Web 诊断工作台 MVP 阶段
+阶段 7.2：DeepSeek 真实结构化报告联调阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具、使用 LangChain DeepSeek 结构化输出。当前按发生时间获取多模块日志，先分析主模块源码，再根据主链路证据按需深入关联模块；LangChain Tool 的异常和源码同步状态已纳入 LangGraph observation，报告新增 `module_relations` 以及跨模块时间差和日志引用，`CheckTouch` 执行链已结构化。当前新增 React + TypeScript + Vite Web 工作台 MVP，页面可展示演示诊断结果并通过 `/api` 代理调用真实诊断接口。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 `DiagnosisReport` JSON schema 完成真实结构化报告调用，失败时仍安全 fallback。React + TypeScript + Vite Web 工作台已通过 `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完成端到端联调。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

@@ -6,17 +6,22 @@ from agent_service.app.models import DiagnosisReport
 
 
 class FakeStructuredDeepSeek:
+    last_method = None
+    last_prompt = ""
+
     def __init__(self, model, temperature, max_retries):
         self.model = model
         self.temperature = temperature
         self.max_retries = max_retries
 
-    def with_structured_output(self, schema):
+    def with_structured_output(self, schema, *, method):
         self.schema = schema
+        FakeStructuredDeepSeek.last_method = method
         return self
 
     def invoke(self, prompt):
         self.prompt = prompt
+        FakeStructuredDeepSeek.last_prompt = prompt
         return DiagnosisReport(
             summary="DeepSeek 结构化报告",
             suspected_module="interaction",
@@ -71,6 +76,9 @@ class DeepSeekWrapperTest(unittest.TestCase):
 
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertEqual(report["evidence_logs"][0]["line_no"], 3)
+        self.assertEqual(FakeStructuredDeepSeek.last_method, "json_mode")
+        self.assertIn("DiagnosisReport JSON schema", FakeStructuredDeepSeek.last_prompt)
+        self.assertIn('"evidence_logs"', FakeStructuredDeepSeek.last_prompt)
 
 
 if __name__ == "__main__":

@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 7.0：Web 诊断工作台 MVP
+阶段 7.2：DeepSeek 真实结构化报告联调
 ```
 
 已完成：
@@ -326,7 +326,7 @@ CHANGES.md
 - `agent-service` 初版：FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
 - `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
 - 已实际使用 LangGraph 编排 `normalize -> rule -> planner -> tool_executor -> observation -> report -> confidence -> finalize` 工作流。
-- 已实际使用 LangChain `StructuredTool` 和 Pydantic schema 包装日志、源码、案例、知识检索工具；DeepSeek 使用 `ChatDeepSeek.with_structured_output(DiagnosisReport)`。
+- 已实际使用 LangChain `StructuredTool` 和 Pydantic schema 包装日志、源码、案例、知识检索工具；DeepSeek 使用 `ChatDeepSeek.with_structured_output(DiagnosisReport, method="json_mode")`。
 - `agent-service` 已接入 `log_context` 和 `source_search` 工具初版，可通过工作流主动拉取 log-service 上下文并检索本地 interaction 源码。
 - `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 
@@ -336,9 +336,9 @@ CHANGES.md
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
 - `RunDiagnosis` 当前仍以调用方传入证据为主，但 Agent 已具备基于 `log_package_id` 主动拉取日志上下文的工具入口。
 - `case_search` 已支持本地 JSON/JSONL 案例索引，按 Bug 描述、机器人类型、主模块和日志关键词排序；没有案例目录时安全返回空结果。
-- Web 工作台已完成总览、Bug 分析、日志时间线和模块状态四个核心视图，支持提交诊断上下文、展示跨模块证据和调用 `/api/diagnose`。
+- Web 工作台已完成总览、Bug 分析、日志时间线和模块状态四个核心视图，通过 `CreateBugTicket -> RunDiagnosis` 调用完整后端链路。
 - `knowledge_search` 已支持本地 JSON/JSONL 知识索引，按 Bug 描述、主模块和日志关键词排序，并保留 `source` 来源标识。
-- DeepSeek 真实 API key 场景尚未做 live 网络调用验证，当前使用 mock 覆盖结构化输出和失败降级。
+- DeepSeek 真实 API key 场景已完成 live 网络调用验证；API key 仅注入运行进程，不写入仓库。
 
 后续开发重心：
 

@@ -12,7 +12,7 @@
 - `log_context` 工具初版，调用 `log-service.GetLogContext` 获取发生时间窗口日志。
 - 当请求包含 `log_package_id` 时，`log_context` 以日志包为主键查询，不强制附带可能不一致的 bug_id。
 - `source_search` 工具初版，优先用 `rg` 检索本地 interaction 源码，缺少 `rg` 时使用标准库递归文本搜索兜底。
-- DeepSeek 结构化报告节点加固：LLM 报告必须通过 `DiagnosisReport` 校验，成功时合并规则证据，失败时 fallback 到规则报告。
+- DeepSeek 结构化报告节点加固：`deepseek-v4-flash` 使用 `json_mode`，prompt 显式携带 `DiagnosisReport` JSON schema，结果必须通过 Pydantic 校验；成功时合并规则证据，失败时 fallback 到规则报告。
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，按 Bug 描述、T/Q 机型、模块和日志关键词匹配。
 - `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，返回带 `source` 的参考条目。
 - C++ `ticket-diagnosis-service.RunDiagnosis` 可通过 `log_package_id` 触发 Agent 自动调用 `log-service` 获取发生时间窗口日志。
