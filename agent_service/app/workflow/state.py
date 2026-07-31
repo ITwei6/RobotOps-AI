@@ -36,6 +36,9 @@ class ModuleRelation(TypedDict, total=False):
     reason: str
     evidence_type: Literal["log", "source"]
     evidence_refs: List[str]
+    time_delta_ms: int
+    source_log_ref: str
+    target_log_ref: str
 
 
 class GraphTraceEvent(TypedDict, total=False):

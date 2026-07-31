@@ -2,6 +2,50 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.7：跨模块日志时间线关联
+
+修改内容：
+
+- 为 `module_relations` 增加跨模块日志时间线字段：`time_delta_ms`、`source_log_ref`、`target_log_ref`。
+- 在主模块日志明确引用关联模块且双方存在有效 `log_time` 时，计算最近关联日志的有符号时间差，保留双方文件和行号。
+- 修复关系去重优先级：同一模块关系先被日志命中、后被源码证据确认时，优先保留 source 证据，同时合并时间线字段和证据引用。
+- 增加 interaction 与 mc 日志相差 20ms 的跨模块关联测试。
+
+原因：
+
+- 仅知道 interaction 与 mc 有关系，还不能判断哪个模块先触发、哪个模块随后返回结果。
+- 研发排障需要将同一时间点上下文中的模块日志按时间顺序关联，支持判断调用链和响应延迟。
+
+影响范围：
+
+- `agent_service/app/workflow/state.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先保留主模块优先和关联模块按需检索策略，再在关系状态上增加时间线，不扩大为所有模块无条件关联。
+- 定向测试发现同一关系会先产生 log 证据、后产生 source 证据，已调整去重逻辑让 source 覆盖 log 提示并保留时间字段。
+
+验证结果：
+
+- Agent 全量测试：25 个测试全部通过。
+- `ticket_diagnosis_service` 在 `dev-env-service` 容器内编译通过。
+- `git diff --check`：待提交前执行。
+
+下一步：
+
+- 将时间线关联扩展到 hds/sm/hal 的故障码、状态变化和响应日志。
+- 在 DeepSeek prompt 中显式传入模块关系与时间差，要求报告按时间顺序解释因果链。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-31 阶段 6.6：模块关联证据状态
 
 修改内容：

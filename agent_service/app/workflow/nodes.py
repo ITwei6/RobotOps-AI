@@ -532,24 +532,67 @@ def _derive_module_relations(
                 "reason": reason,
                 "evidence_type": evidence_type,
                 "evidence_refs": list(dict.fromkeys(refs))[:10],
+                **_nearest_module_log_relation(logs, primary, module, aliases),
             }
         )
     return _unique_relations(relations)
 
 
+def _nearest_module_log_relation(
+    logs: List[Dict[str, Any]],
+    primary: str,
+    target: str,
+    aliases: set[str],
+) -> Dict[str, Any]:
+    primary_logs = [
+        log
+        for log in logs
+        if str(log.get("module_name") or "") == primary
+        and any(alias in _log_search_text(log).lower() for alias in aliases if alias)
+    ]
+    target_logs = [log for log in logs if str(log.get("module_name") or "") == target]
+    candidates = [
+        (abs(int(target_log.get("log_time") or 0) - int(primary_log.get("log_time") or 0)), primary_log, target_log)
+        for primary_log in primary_logs
+        for target_log in target_logs
+        if int(primary_log.get("log_time") or 0) > 0 and int(target_log.get("log_time") or 0) > 0
+    ]
+    if not candidates:
+        return {}
+    _, primary_log, target_log = min(candidates, key=lambda item: item[0])
+    return {
+        "time_delta_ms": int(target_log.get("log_time") or 0) - int(primary_log.get("log_time") or 0),
+        "source_log_ref": f"{primary_log.get('file_name', '')}:{primary_log.get('line_no', 0)}",
+        "target_log_ref": f"{target_log.get('file_name', '')}:{target_log.get('line_no', 0)}",
+    }
+
+
 def _unique_relations(relations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
-    seen = set()
+    positions: Dict[tuple[str, str], int] = {}
     for relation in relations:
         key = (
             str(relation.get("from_module") or ""),
             str(relation.get("to_module") or ""),
-            str(relation.get("evidence_type") or ""),
         )
-        if key in seen:
+        current = dict(relation)
+        if key not in positions:
+            positions[key] = len(result)
+            result.append(current)
             continue
-        result.append(dict(relation))
-        seen.add(key)
+        index = positions[key]
+        existing = result[index]
+        # A source relation is stronger than a log-only hint. Keep the richer
+        # record while preserving timeline fields discovered in either pass.
+        if existing.get("evidence_type") != "source" and current.get("evidence_type") == "source":
+            existing, current = current, existing
+        for field in ("time_delta_ms", "source_log_ref", "target_log_ref"):
+            if field not in existing and field in current:
+                existing[field] = current[field]
+        existing["evidence_refs"] = list(dict.fromkeys(
+            list(existing.get("evidence_refs") or []) + list(current.get("evidence_refs") or [])
+        ))[:10]
+        result[index] = existing
     return result
 
 

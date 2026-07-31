@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 6.6：模块关联证据状态
+阶段 6.7：跨模块日志时间线关联
 ```
 
 已完成：
@@ -332,6 +332,7 @@ CHANGES.md
 - 诊断报告新增 `execution_chain`，当前已实现触摸事件进入 interaction、`CheckTouch` 拦截、未进入任务创建/派发阶段的执行链表达。
 - LangChain Tool 的输入校验、异常和源码同步状态会进入 LangGraph observation；单个模块工具失败不会中断整条诊断流程。
 - 报告新增 `module_relations`，记录主模块到关联模块的触发原因、证据类型和证据引用，关联模块检索由该状态驱动。
+- `module_relations` 进一步记录主模块日志与关联模块日志的时间差、双方文件和行号，用于判断跨模块调用顺序。
 - 日志上下文按发生时间窗口获取全部模块；源码先分析 `main_module`，发现主链路引用其他模块后，再按需检索 `mc`、`hal_*`、`hds`、`sm` 等模块源码。
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。

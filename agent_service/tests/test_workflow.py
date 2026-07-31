@@ -124,13 +124,15 @@ class DiagnosisWorkflowTest(unittest.TestCase):
                     "module_name": "interaction",
                     "file_name": "interaction.log",
                     "line_no": 10,
+                    "log_time": 1785396730000,
                     "log_level": "error",
-                    "message": "interaction request failed",
+                    "message": "interaction calls mc SetMcAction and request failed",
                 },
                 {
                     "module_name": "mc",
                     "file_name": "mc.log",
                     "line_no": 20,
+                    "log_time": 1785396730020,
                     "log_level": "error",
                     "message": "mc action failed",
                 },
@@ -178,6 +180,9 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["module_relations"][0]["from_module"], "interaction")
         self.assertEqual(report["module_relations"][0]["to_module"], "mc")
         self.assertEqual(report["module_relations"][0]["evidence_type"], "source")
+        self.assertEqual(report["module_relations"][0]["time_delta_ms"], 20)
+        self.assertEqual(report["module_relations"][0]["source_log_ref"], "interaction.log:10")
+        self.assertEqual(report["module_relations"][0]["target_log_ref"], "mc.log:20")
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
     @patch("agent_service.app.workflow.nodes.generate_structured_report")
