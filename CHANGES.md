@@ -657,3 +657,83 @@ python3 -m unittest discover -s agent_service/tests
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-31 阶段 5.2：Agent 工具取证循环初版
+
+修改内容：
+
+- 新增 `agent_service/app/tools/` 工具模块。
+- 新增 `log_tool.fetch_log_context()`，通过 HTTP JSON 调用 `log-service.GetLogContext`，并归一化为 Agent 的 `LogEvidence` 字段。
+- 新增 `source_tool.search_source()`，支持按关键日志语句检索本地 interaction 源码，返回 `SourceEvidence`，包含文件路径、函数名、匹配文本和上下文片段。
+- `source_search` 优先使用 `rg`，当容器或环境缺少 `rg` 时，自动降级为 Python 标准库递归文本搜索。
+- 扩展 `agent_service/app/settings.py`，新增：
+  - `ROBOTOPS_LOG_SERVICE_URL`
+  - `ROBOTOPS_SOURCE_SEARCH_ROOTS`
+  - `ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS`
+  - `ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS`
+- 修改 `workflow.nodes._execute_tool()`，将 `log_context` 和 `source_search` 从 stub 接入真实工具。
+- 修正工具取证后的报告生成逻辑：`fallback_report_node` 和 `llm_report_node` 会基于当前 state 中新增的日志和源码证据重新运行规则 baseline，避免工具取证成功后仍输出取证前的低置信度报告。
+- 新增 `agent_service/tests/test_tools.py`，覆盖 log-service HTTP JSON 响应归一化和源码检索片段。
+- 扩展 `agent_service/tests/test_workflow.py`，覆盖无入参日志但有 `log_package_id` 时，workflow 通过 `log_context -> source_search` 工具取证后命中 interaction 规则报告。
+- 更新 `README.md`、`agent_service/README.md` 和 `AGENTS.md` 当前阶段说明。
+
+原因：
+
+- 阶段 5.1 已完成 LangGraph workflow skeleton，但工具执行仍是空结果，不能真正复现 `planner -> tool action -> observation -> report` 的 ReAct 取证流程。
+- 当前 RobotOps AI 的重点是 Agent 诊断能力，下一步必须让 Agent 主动获取发生时间窗口日志和 interaction 源码证据，而不是继续依赖调用方手工传入全部证据。
+- 真实研发排障要求报告必须基于日志和源码证据，工具取证后的证据必须进入最终规则 baseline 和置信度校准。
+
+影响范围：
+
+- `agent_service/app/settings.py`
+- `agent_service/app/tools/`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_tools.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `agent_service/README.md`
+- `AGENTS.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 首次在宿主机执行 `python3 -m unittest discover -s agent_service/tests` 失败，原因是宿主机 Python 环境缺少 `pydantic`，不作为项目代码失败处理。
+- 按项目规范切换到 `dev-env-service` 容器验证；文档示例路径 `/home/dev/workspace/projects/RobotOps-AI` 不存在，实际路径为 `/home/dev/workspace/RobotOps-AI`。
+- 容器内首次完整测试发现 `source_search` 测试没有结果，确认原因是容器未安装 `rg`。
+- 为保证工具环境鲁棒性，保留 `rg` 优先策略，同时补充标准库递归文本搜索兜底。
+- 源码函数名推断初版曾把 `LOG(...)` 宏误判为函数名，已改为优先识别 C++ `Class::Function`，普通函数签名必须包含定义体 `{`。
+
+验证结果：
+
+- 宿主机已执行：
+
+```text
+python3 -m unittest agent_service.tests.test_tools
+```
+
+- 结果：2 个工具测试通过。
+- 已在 `dev-env-service` 容器中执行：
+
+```text
+cd /home/dev/workspace/RobotOps-AI
+python3 -m unittest discover -s agent_service/tests
+```
+
+- 结果：7 个测试全部通过。
+
+当前限制：
+
+- `log_context` 依赖 `log-service` 已导入对应 `log_package_id` 的日志；服务不可用或未导入时会记录工具失败并降级。
+- `source_search` 当前是文本检索和启发式函数名推断，尚未接 tree-sitter、clangd index 或 source-index-service。
+- `case_search` 和 `knowledge_search` 仍为空实现。
+- DeepSeek 结构化报告节点仍是预留入口，尚未完成有 API key 场景的端到端验证。
+
+下一步：
+
+- 完善 DeepSeek LLM 报告节点，支持有 `DEEPSEEK_API_KEY` 时生成并校验结构化报告，失败自动 fallback。
+- 接入真实历史案例和知识库/RAG 工具。
+- 后续让 `ticket-diagnosis-service.RunDiagnosis` 传入 `log_package_id`，使 Agent 能自动从 `log-service` 拉取上下文。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。

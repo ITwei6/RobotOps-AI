@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 5.1：LangGraph Agent 工作流骨架开发
+阶段 5.2：Agent 工具取证循环初版开发
 ```
 
 已完成：
@@ -304,15 +304,17 @@ CHANGES.md
 - `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
 - 已完成 LangGraph / LangChain / ReAct 调研，当前正在设计 `agent-service` 的 `DiagnosisState`、节点、图结构、工具边界和降级策略。
 - `agent-service` 已开始落地 LangGraph workflow skeleton，`/diagnose` 内部走 `run_diagnosis_workflow()`，无 DeepSeek API key 时 fallback 到规则报告。
+- `agent-service` 已接入 `log_context` 和 `source_search` 工具初版，可通过工作流主动拉取 log-service 上下文并检索本地 interaction 源码。
 
 当前限制：
 
 - 后端服务当前使用内存存储，尚未接入 MySQL / Elasticsearch / Redis / RabbitMQ。
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
-- `RunDiagnosis` 当前需要调用方传入日志证据和源码证据，尚未自动从 `log-service` 拉取上下文。
+- `RunDiagnosis` 当前仍以调用方传入证据为主，但 Agent 已具备基于 `log_package_id` 主动拉取日志上下文的工具入口。
+- `case_search` 和 `knowledge_search` 当前仍是空实现，尚未接历史案例和知识库/RAG。
 
 后续开发重心：
 
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
 - Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。
-- 下一步接入真实 `log_context` 和 `source_search` 工具，让 Agent 主动获取日志上下文和 interaction 源码证据。
+- 下一步完善 DeepSeek 结构化报告节点，并接入历史案例、知识库/RAG 工具。

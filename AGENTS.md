@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 5.1：LangGraph Agent 工作流骨架开发阶段
+阶段 5.2：Agent 工具取证循环初版开发阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，以及 `agent-service` LangGraph 工作流设计。当前阶段正在把 `/diagnose` 内部切换到 LangGraph workflow skeleton，先保证无 DeepSeek API key 时仍可 deterministic fallback。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架，以及 `log_context` / `source_search` 工具取证入口初版。当前阶段继续把 `planner -> tool action -> observation -> report` 做实，先让 Agent 能主动拉取日志上下文和检索 interaction 源码。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

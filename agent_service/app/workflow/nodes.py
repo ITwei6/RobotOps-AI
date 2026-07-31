@@ -7,6 +7,7 @@ from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structu
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
+from agent_service.app.tools import fetch_log_context, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
 
@@ -147,7 +148,7 @@ def choose_report_node(state: DiagnosisState) -> DiagnosisState:
 
 def llm_report_node(state: DiagnosisState) -> DiagnosisState:
     settings = load_settings()
-    rule_report = state.get("rule_report") or _empty_report(state)
+    rule_report = diagnose(_request_with_state_evidence(state))
     try:
         report = generate_structured_report(
             model=settings.llm_model,
@@ -168,7 +169,7 @@ def llm_report_node(state: DiagnosisState) -> DiagnosisState:
 
 
 def fallback_report_node(state: DiagnosisState) -> DiagnosisState:
-    report = dict(state.get("rule_report") or _empty_report(state))
+    report = diagnose(_request_with_state_evidence(state))
     report["agent_version"] = "langgraph-diagnosis-v1"
     return {
         "report": DiagnosisReport(**report).model_dump(),
@@ -205,15 +206,35 @@ def finalize_node(state: DiagnosisState) -> DiagnosisState:
 def _execute_tool(request: ToolRequest) -> ToolObservation:
     tool_name = str(request.get("tool_name") or "")
     args = dict(request.get("args") or {})
+    settings = load_settings()
     if tool_name == "log_context":
-        return {"tool_name": tool_name, "ok": True, "args": args, "result": {"logs": []}}
+        result = fetch_log_context(
+            log_service_url=settings.log_service_url,
+            timeout_seconds=settings.tool_timeout_seconds,
+            args=args,
+        )
+        return _tool_observation(tool_name, args, result, "logs")
     if tool_name == "source_search":
-        return {"tool_name": tool_name, "ok": True, "args": args, "result": {"sources": []}}
+        result = search_source(
+            roots=settings.source_search_roots,
+            timeout_seconds=settings.tool_timeout_seconds,
+            args=args,
+        )
+        return _tool_observation(tool_name, args, result, "sources")
     if tool_name == "case_search":
         return {"tool_name": tool_name, "ok": True, "args": args, "result": {"history_cases": []}}
     if tool_name == "knowledge_search":
         return {"tool_name": tool_name, "ok": True, "args": args, "result": {"knowledge_items": []}}
     return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
+
+
+def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, Any], result_key: str) -> ToolObservation:
+    ok = bool(result.get("ok"))
+    payload = {result_key: list(result.get(result_key) or [])}
+    observation: ToolObservation = {"tool_name": tool_name, "ok": ok, "args": args, "result": payload}
+    if not ok:
+        observation["error"] = str(result.get("error") or f"{tool_name} failed")
+    return observation
 
 
 def _request_with_state_evidence(state: DiagnosisState) -> Dict[str, Any]:
