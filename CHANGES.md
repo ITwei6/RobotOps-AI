@@ -356,6 +356,56 @@ cmake --build build -j1
 
 - 待本阶段全量测试通过后提交。
 
+## 2026-07-31 阶段 5.6：RunDiagnosis 日志包自动取证联调
+
+修改内容：
+
+- 扩展 `proto/ticket_diagnosis.proto` 的 `RunDiagnosisRequest`，新增 `log_package_id` 字段。
+- 修改 `ticket-diagnosis-service` 的 `AgentClient`：使用 `RunDiagnosisRequest.log_package_id` 作为显式值；调用方未传时，回退使用已保存 `BugTicket.log_package_id`。
+- 继续复用现有 Agent workflow 的 `log_context` 工具，使 C++ `RunDiagnosis` 可以在 logs 为空时触发 `agent-service -> log-service.GetLogContext`。
+- 更新 `AGENTS.md`、`README.md`、`agent_service/README.md`，明确跨服务字段传递和自动取证链路。
+
+原因：
+
+- `BugTicket` 虽然已经保存日志包 ID，但 `RunDiagnosisRequest` 缺少显式字段，接口调用方无法在诊断时明确指定或覆盖日志包。
+- 阶段 5.2 之后 Agent 已具备按 `log_package_id` 自动取证能力，本阶段补齐 C++ RPC 到 Agent HTTP JSON 的字段贯通，形成可联调的最小闭环。
+- 采用请求值优先、ticket 值兜底，兼容已有调用方和历史数据。
+
+影响范围：
+
+- `proto/ticket_diagnosis.proto`
+- `backend/services/ticket_diagnosis_service/src/agent_client.cc`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 开发前检查发现已有 `BugTicket.log_package_id` 和 Agent 自动取证逻辑，但 `RunDiagnosisRequest` 没有对应字段；因此采用向后兼容的 proto 新字段方案，没有修改外部 `/diagnose` 请求结构。
+- 未改动用户提供的 API key，也没有把任何凭据写入 proto、C++ 或测试。
+- protobuf 重新生成和 C++ 编译按项目规范在 `dev-env-service` 容器中执行，宿主机不直接运行 CMake、make 或 C++ 编译器。
+
+验证结果：
+
+- 已在 `dev-env-service` 容器执行 `cmake --build build -j1 --target ticket_diagnosis_service`，protobuf 重新生成成功，`ticket_diagnosis_service` 编译链接成功。
+- Agent-service 全量测试通过：16 个测试全部 `OK`。
+- `git diff --check` 通过。
+
+当前限制：
+
+- 当前 C++ 服务仍是内存 store，尚未连接真实 MySQL/日志包持久化环境。
+- 本阶段验证字段和编译链路，不代替真实 log-service、ticket-diagnosis-service、agent-service 三服务联调。
+
+下一步：
+
+- 启动三服务完成真实 HTTP/RPC 联调，验证空 logs 请求能按日志包 ID返回日志证据。
+- 再将知识检索从本地文件扩展到 knowledge-service/向量检索。
+
+是否已提交 Git：
+
+- 待容器编译和测试通过后提交。
+
 ## 2026-07-31 阶段 5.5：知识库检索工具接入
 
 修改内容：

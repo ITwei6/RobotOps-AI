@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 5.5：知识库检索工具接入阶段
+阶段 5.6：RunDiagnosis 日志包自动取证联调阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。当前阶段已接入本地 JSON/JSONL 知识检索，并修复空结果工具重复调用问题。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。当前阶段正在贯通 `RunDiagnosisRequest.log_package_id -> agent-service /diagnose -> log-service` 自动取证链路。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

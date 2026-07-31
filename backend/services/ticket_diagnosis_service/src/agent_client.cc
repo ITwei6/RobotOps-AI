@@ -71,7 +71,9 @@ Json::Value buildRequestJson(
     bug["software_version"] = ticket.software_version();
     bug["branch"] = ticket.branch();
     bug["commit"] = ticket.commit();
-    bug["log_package_id"] = ticket.log_package_id();
+    bug["log_package_id"] = request.log_package_id().empty()
+        ? ticket.log_package_id()
+        : request.log_package_id();
     bug["source_repo"] = ticket.source_repo();
     root["bug"] = bug;
 

@@ -159,6 +159,7 @@ message RunDiagnosisRequest {
   repeated DiagnosisLogEvidence logs = 2;
   repeated DiagnosisSourceEvidence sources = 3;
   string agent_endpoint = 4;
+  string log_package_id = 5;
 }
 
 message RunDiagnosisResponse {

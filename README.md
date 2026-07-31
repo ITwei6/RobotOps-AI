@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 5.5：知识库检索工具接入
+阶段 5.6：RunDiagnosis 日志包自动取证联调
 ```
 
 已完成：
@@ -320,4 +320,5 @@ CHANGES.md
 
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
 - Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。
-- 下一步把本地知识索引替换或扩展为 knowledge-service/向量检索，并让 C++ `RunDiagnosis` 传递 `log_package_id` 触发 Agent 自动取证。
+- `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
+- 下一步把本地知识索引替换或扩展为 knowledge-service/向量检索，并完成带真实日志包的服务联调。
