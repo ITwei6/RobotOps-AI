@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 5.3：DeepSeek 结构化报告节点加固
+阶段 5.4：历史案例检索工具接入
 ```
 
 已完成：
@@ -312,11 +312,12 @@ CHANGES.md
 - 后端服务当前使用内存存储，尚未接入 MySQL / Elasticsearch / Redis / RabbitMQ。
 - 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
 - `RunDiagnosis` 当前仍以调用方传入证据为主，但 Agent 已具备基于 `log_package_id` 主动拉取日志上下文的工具入口。
-- `case_search` 和 `knowledge_search` 当前仍是空实现，尚未接历史案例和知识库/RAG。
+- `case_search` 已支持本地 JSON/JSONL 案例索引，按 Bug 描述、机器人类型、主模块和日志关键词排序；没有案例目录时安全返回空结果。
+- `knowledge_search` 仍是空实现，尚未接知识库/RAG。
 - DeepSeek 真实 API key 场景尚未做 live 网络调用验证，当前使用 mock 覆盖结构化输出和失败降级。
 
 后续开发重心：
 
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
 - Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。
-- 下一步接入历史案例、知识库/RAG 工具，并让 C++ `RunDiagnosis` 传递 `log_package_id` 触发 Agent 自动取证。
+- 下一步接入知识库/RAG 工具，并让 C++ `RunDiagnosis` 传递 `log_package_id` 触发 Agent 自动取证。

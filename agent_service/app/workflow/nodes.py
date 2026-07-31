@@ -7,7 +7,7 @@ from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structu
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
-from agent_service.app.tools import fetch_log_context, search_source
+from agent_service.app.tools import fetch_log_context, search_cases, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
 
@@ -86,6 +86,26 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                         "module_name": bug.get("main_module", "interaction"),
                         "keywords": _keywords_from_logs(state.get("log_evidence") or []),
                         "max_results": 10,
+                    },
+                }
+            ],
+        )
+
+    if not state.get("history_cases") and _can_use_more_tools(state):
+        return _plan(
+            "retrieve_cases",
+            "已有基础证据，检索相似 interaction 历史案例作为参考。",
+            [
+                {
+                    "tool_name": "case_search",
+                    "reason": "用 Bug 描述、机器人类型、模块和日志关键句匹配已确认案例。",
+                    "args": {
+                        "title": bug.get("title", ""),
+                        "description": bug.get("description", ""),
+                        "robot_type": bug.get("robot_type", ""),
+                        "main_module": bug.get("main_module", ""),
+                        "keywords": _keywords_from_logs(state.get("log_evidence") or []),
+                        "max_results": 5,
                     },
                 }
             ],
@@ -171,6 +191,7 @@ def llm_report_node(state: DiagnosisState) -> DiagnosisState:
 
 def fallback_report_node(state: DiagnosisState) -> DiagnosisState:
     report = diagnose(_request_with_state_evidence(state))
+    _merge_history_context(report, state.get("history_cases") or [])
     report["agent_version"] = "langgraph-diagnosis-v1"
     return {
         "report": DiagnosisReport(**report).model_dump(),
@@ -223,7 +244,8 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
         )
         return _tool_observation(tool_name, args, result, "sources")
     if tool_name == "case_search":
-        return {"tool_name": tool_name, "ok": True, "args": args, "result": {"history_cases": []}}
+        result = search_cases(settings.case_search_roots, args)
+        return _tool_observation(tool_name, args, result, "history_cases")
     if tool_name == "knowledge_search":
         return {"tool_name": tool_name, "ok": True, "args": args, "result": {"knowledge_items": []}}
     return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
@@ -253,6 +275,22 @@ def _merge_report_evidence(report: Dict[str, Any], rule_report: Dict[str, Any]) 
     if not merged.get("summary"):
         merged["summary"] = str(rule_report.get("summary") or "当前证据不足，无法生成明确结论。")
     return merged
+
+
+def _merge_history_context(report: Dict[str, Any], cases: List[Dict[str, Any]]) -> None:
+    """Expose case-derived suggestions as references, without treating them as proof."""
+    for case in cases[:3]:
+        case_id = str(case.get("case_id") or case.get("id") or "unknown")
+        for field in ("causes", "possible_causes"):
+            for value in case.get(field) or []:
+                item = f"历史案例参考原因（{case_id}）：{value}"
+                if item not in report["possible_causes"]:
+                    report["possible_causes"].append(item)
+        for field in ("actions", "recommended_actions"):
+            for value in case.get(field) or []:
+                item = f"历史案例参考建议（{case_id}）：{value}"
+                if item not in report["recommended_actions"]:
+                    report["recommended_actions"].append(item)
 
 
 def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, Any], result_key: str) -> ToolObservation:

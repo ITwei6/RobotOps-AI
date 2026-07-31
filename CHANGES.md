@@ -298,6 +298,64 @@ cmake --build build -j1
 
 - 是。已纳入本次阶段提交。
 
+## 2026-07-31 阶段 5.4：历史案例检索工具接入
+
+修改内容：
+
+- 新增 `agent_service/app/tools/case_tool.py`，支持读取配置目录中的 `.json` 和 `.jsonl` 历史案例。
+- 案例检索按 Bug 标题、描述、日志关键词匹配，并对 `robot_type`、`main_module` 精确匹配加权，最多返回 20 条结果。
+- 将 `case_search` 接入 LangGraph planner 和 tool executor；默认工具预算从 2 次提升到 3 次，允许完成“日志 -> 源码 -> 历史案例”的取证顺序。
+- deterministic fallback 会把案例内容明确标记为“历史案例参考原因/建议”，不把历史案例当作当前 Bug 的事实证据。
+- 新增 `agent_service/tests/test_case_tool.py`，覆盖案例排序和缺少案例目录时的空结果降级。
+- 更新 `AGENTS.md`、`README.md`、`agent_service/README.md`，记录配置项和当前阶段。
+
+原因：
+
+- 真实 interaction Bug 排障高度依赖已确认案例，只有日志和源码检索仍然无法复用团队已有判断和处理经验。
+- `case_search` 原先只是空结果 stub，无法验证 LangGraph 的第三类取证工具，也无法让无 LLM 环境复用历史排障建议。
+- 先采用本地 JSON/JSONL 索引，保持 agent-service 独立、可测试、无需提前引入数据库；后续再替换为 knowledge-service 或向量检索后端。
+
+影响范围：
+
+- `agent_service/app/tools/case_tool.py`
+- `agent_service/app/tools/__init__.py`
+- `agent_service/app/settings.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_case_tool.py`
+- `AGENTS.md`
+- `README.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 开发前核对了 `AGENTS.md`、`README.md`、`agent_service/README.md`、`CHANGES.md` 和 LangGraph 工作流代码，确认本阶段只扩展 agent-service 工具边界，不新增 C++ 服务。
+- 首次大补丁因节点上下文顺序不匹配被 `apply_patch` 拒绝，没有产生半成品；随后拆分为工具、配置、工作流、测试四组小补丁完成修改。
+- 案例文件解析只接受本地只读路径，单个文件损坏或编码异常会跳过，不阻断诊断流程。
+- 宿主机使用 `py_compile` 和 `git diff --check` 完成静态检查；运行时测试按项目规范使用 `dev-env-service` 容器。
+
+验证结果：
+
+- `python3 -m py_compile agent_service/app/tools/case_tool.py agent_service/app/settings.py agent_service/app/workflow/nodes.py agent_service/tests/test_case_tool.py`：通过。
+- `git diff --check`：通过。
+- 容器内 `python3 -m unittest agent_service.tests.test_case_tool agent_service.tests.test_workflow`：7 个测试通过。
+- 待文档更新后继续执行 `python3 -m unittest discover -s agent_service/tests` 全量测试。
+
+当前限制：
+
+- 案例库仍是本地 JSON/JSONL 文件，不支持案例管理 API、向量召回或权限控制。
+- `knowledge_search` 仍是空实现。
+- 本阶段没有将案例内容新增为报告独立字段；fallback 仅把案例原因和建议标记后并入文本字段，LLM 场景通过 prompt 读取完整历史案例。
+
+下一步：
+
+- 接入知识库/RAG 工具，统一案例和 SOP 的检索接口，并保留来源标识。
+- 让 `ticket-diagnosis-service.RunDiagnosis` 携带 `log_package_id`，完成 C++ 编排到 Agent 自动取证的联调。
+
+是否已提交 Git：
+
+- 待本阶段全量测试通过后提交。
+
 ## 2026-07-30 阶段 2：ticket-diagnosis-service Bug 与诊断任务服务
 
 修改内容：

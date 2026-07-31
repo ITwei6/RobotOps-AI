@@ -1,4 +1,7 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from agent_service.app.llm.deepseek import DeepSeekUnavailable
@@ -146,6 +149,32 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertLessEqual(report["confidence"], 0.75)
         self.assertIn("T1Checker::CheckTouch", report["evidence_sources"][0]["function_name"])
         generate_structured_report.assert_called_once()
+
+    def test_workflow_adds_historical_case_as_reference(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Path(tmpdir, "cases.json").write_text(
+                json.dumps(
+                    {
+                        "cases": [
+                            {
+                                "case_id": "case-touch-001",
+                                "title": "T 型触摸后没有反应",
+                                "robot_type": "ROBOT_TYPE_T",
+                                "main_module": "interaction",
+                                "causes": ["历史上由 CheckTouch 拦截"],
+                                "actions": ["核对 MC action"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict("os.environ", {"ROBOTOPS_CASE_SEARCH_ROOTS": tmpdir}):
+                report = run_diagnosis_workflow(self.touch_payload)
+
+        self.assertTrue(any("case-touch-001" in item for item in report["possible_causes"]))
+        self.assertTrue(any("case-touch-001" in item for item in report["recommended_actions"]))
 
 
 if __name__ == "__main__":
