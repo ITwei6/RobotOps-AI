@@ -8,6 +8,7 @@
 - `GET /health` 健康检查。
 - `POST /diagnose` 结构化诊断接口。
 - `rule-template-v1` 规则模板诊断，优先覆盖 interaction 研发 Bug 常见链路。
+- `langgraph-diagnosis-v1` 工作流骨架，内部按 `normalize_input -> rule_evidence -> planner -> report -> confidence_check -> finalize` 执行。
 
 当前策略：
 
@@ -25,7 +26,7 @@ Bug 描述 / 机器人类型 / 主模块
 
 后续演进：
 
-- 用 LangGraph 编排 `parse_bug -> fetch_log_context -> extract_log_evidence -> search_source -> retrieve_cases -> generate_report -> confidence_check`。
+- 继续完善 LangGraph 的 `planner -> tool action -> observation -> report` 循环。
 - 用 LangChain 封装日志检索、源码检索、知识库/RAG、历史案例检索等工具。
 - RAG 是 Agent 的工具，不等于 Agent 本身。
 

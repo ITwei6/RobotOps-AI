@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from agent_service.app.models import DiagnoseRequest, DiagnosisReport, HealthResponse
-from agent_service.app.rules import diagnose
+from agent_service.app.workflow import run_diagnosis_workflow
 
 
 app = FastAPI(
@@ -20,5 +20,5 @@ def health() -> HealthResponse:
 
 @app.post("/diagnose", response_model=DiagnosisReport)
 def diagnose_bug(request: DiagnoseRequest) -> DiagnosisReport:
-    report = diagnose(request.model_dump())
+    report = run_diagnosis_workflow(request.model_dump())
     return DiagnosisReport(**report)

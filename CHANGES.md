@@ -595,3 +595,65 @@ ROBOTOPS_AGENT_SERVICE_URL=http://127.0.0.1:9601
 是否已提交 Git：
 
 - 是。已纳入本次阶段提交。
+
+## 2026-07-31 阶段 5.1：LangGraph Agent 工作流骨架
+
+修改内容：
+
+- 更新 `agent_service/requirements.txt`，新增 `langgraph`、`langchain-deepseek` 和 `typing-extensions`。
+- 新增 `agent_service/app/settings.py`，集中读取 DeepSeek 和 Agent workflow 配置。
+- 新增 `agent_service/app/workflow/`：
+  - `state.py` 定义 `DiagnosisState`、`DiagnosisPlan`、`ToolRequest`、`ToolObservation`、`Hypothesis` 和 `GraphTraceEvent`。
+  - `graph.py` 实现 `build_diagnosis_graph()` 和 `run_diagnosis_workflow()`。
+  - `nodes.py` 实现 normalize、rule evidence、planner、tool executor、observation analyzer、choose report、LLM report、fallback report、confidence check 和 finalize 节点。
+  - `routing.py` 实现 LangGraph conditional edge 路由函数。
+  - `confidence.py` 实现证据强度驱动的置信度校准。
+- 新增 `agent_service/app/llm/deepseek.py`，预留 `ChatDeepSeek` 结构化报告生成入口。
+- 修改 `agent_service/app/main.py`，保持 `/diagnose` 外部接口不变，内部切换为 LangGraph workflow。
+- 新增 `agent_service/tests/test_workflow.py`，覆盖无 DeepSeek API key 时的规则 fallback 和低置信度场景。
+- 更新 `agent_service/README.md`、`AGENTS.md` 和 `README.md` 阶段说明。
+
+原因：
+
+- 用户要求先设计 LangGraph 状态和图结构，再进入后续开发。
+- Agent 是 RobotOps AI 后续重点，需要把诊断过程从单个规则函数演进为可观测、可测试、可扩展的工作流。
+- 第一版工作流必须在没有 LLM API key 时仍可运行，避免本地测试和 C++ 编排链路依赖外部模型。
+
+影响范围：
+
+- `agent_service/requirements.txt`
+- `agent_service/app/main.py`
+- `agent_service/app/settings.py`
+- `agent_service/app/workflow/`
+- `agent_service/app/llm/`
+- `agent_service/tests/test_workflow.py`
+- `agent_service/README.md`
+- `AGENTS.md`
+- `README.md`
+- `CHANGES.md`
+
+验证结果：
+
+- 已在 `dev-env-service` 容器中安装更新后的 Python 依赖：
+
+```text
+python3 -m pip install --default-timeout 180 -i https://pypi.tuna.tsinghua.edu.cn/simple -r agent_service/requirements.txt
+```
+
+- 已在 `dev-env-service` 容器中执行：
+
+```text
+python3 -m unittest discover -s agent_service/tests
+```
+
+- 结果：4 个测试全部通过。
+
+下一步：
+
+- 接入真实 `log_context` 工具，调用 `log-service.GetLogContext` 获取发生时间窗口日志。
+- 接入真实 `source_search` 工具，优先检索本地 `../interaction` 源码。
+- 完善 DeepSeek LLM 报告节点，在有 `DEEPSEEK_API_KEY` 时生成并校验结构化报告。
+
+是否已提交 Git：
+
+- 是。已纳入本次阶段提交。
