@@ -4,10 +4,10 @@ from copy import deepcopy
 from typing import Any, Dict, List
 
 from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structured_report
+from agent_service.app.langchain_tools import build_tool_registry
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
-from agent_service.app.source_registry import load_repositories
 from agent_service.app.tools import fetch_log_context, search_cases, search_knowledge, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
@@ -54,52 +54,51 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
     if not state.get("log_evidence") and bug.get("log_package_id") and _can_use_more_tools(state):
         return _plan(
             "collect_logs",
-            "当前没有日志证据，先按发生时间从 log-service 获取上下文。",
+            "当前没有日志证据，先按发生时间从 log-service 获取全部模块上下文。",
             [
                 {
                     "tool_name": "log_context",
-                    "reason": "获取 occurred_time 前后 interaction 日志上下文。",
+                    "reason": "获取 occurred_time 前后全部模块日志上下文。",
                     "args": {
                         "bug_id": bug.get("bug_id", ""),
                         "log_package_id": bug.get("log_package_id", ""),
                         "occurred_time": bug.get("occurred_time", 0),
-                        "module_name": bug.get("main_module", "interaction"),
+                        # An empty module filter lets log-service return all
+                        # modules in the same time window for correlation.
+                        "module_name": "",
                         "seconds_before": 300,
                         "seconds_after": 300,
-                        "keywords": ["touch", "self check", "TaskFactory", "WorkerManager", "Skill"],
+                        "keywords": [],
                     },
                 }
             ],
         )
 
-    if (
-        state.get("log_evidence")
-        and not state.get("source_evidence")
-        and not _tool_was_attempted(state, "source_search")
-        and _can_use_more_tools(state)
-    ):
+    modules = _next_source_modules(state)
+    if modules and _can_use_more_tools(state):
         return _plan(
             "search_source",
-            "已有日志证据但缺少源码证据，检索 interaction 关键源码位置。",
+            "先分析主模块源码，再根据主链路证据按需深入关联模块源码。",
             [
                 {
                     "tool_name": "source_search",
-                    "reason": "根据日志关键句定位 interaction 源码。",
+                    "reason": f"根据日志关键句定位 {module} 模块源码。",
                     "args": {
-                        "module_name": bug.get("main_module", "interaction"),
+                        "module_name": module,
                         "branch": bug.get("branch", ""),
                         "commit": bug.get("commit", ""),
                         "keywords": _keywords_from_logs(state.get("log_evidence") or []),
                         "max_results": 10,
                     },
                 }
+                for module in modules[:1]
             ],
         )
 
     if not state.get("history_cases") and not _tool_was_attempted(state, "case_search") and _can_use_more_tools(state):
         return _plan(
             "retrieve_cases",
-            "已有基础证据，检索相似 interaction 历史案例作为参考。",
+            "已有基础证据，检索相似模块历史案例作为参考。",
             [
                 {
                     "tool_name": "case_search",
@@ -254,29 +253,31 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
     tool_name = str(request.get("tool_name") or "")
     args = dict(request.get("args") or {})
     settings = load_settings()
-    if tool_name == "log_context":
-        result = fetch_log_context(
-            log_service_url=settings.log_service_url,
-            timeout_seconds=settings.tool_timeout_seconds,
-            args=args,
-        )
-        return _tool_observation(tool_name, args, result, "logs")
-    if tool_name == "source_search":
-        result = search_source(
-            roots=settings.source_search_roots,
-            timeout_seconds=settings.tool_timeout_seconds,
-            args=args,
-            workspace_root=settings.source_workspace_root,
-            repositories=load_repositories(settings.source_repository_file),
-        )
-        return _tool_observation(tool_name, args, result, "sources")
-    if tool_name == "case_search":
-        result = search_cases(settings.case_search_roots, args)
-        return _tool_observation(tool_name, args, result, "history_cases")
-    if tool_name == "knowledge_search":
-        result = search_knowledge(settings.knowledge_search_roots, args)
-        return _tool_observation(tool_name, args, result, "knowledge_items")
-    return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
+    tools = build_tool_registry(
+        log_service_url=settings.log_service_url,
+        timeout_seconds=settings.tool_timeout_seconds,
+        source_roots=settings.source_search_roots,
+        source_workspace_root=settings.source_workspace_root,
+        source_repository_file=settings.source_repository_file,
+        case_roots=settings.case_search_roots,
+        knowledge_roots=settings.knowledge_search_roots,
+        log_fetcher=fetch_log_context,
+        source_searcher=search_source,
+        case_searcher=search_cases,
+        knowledge_searcher=search_knowledge,
+    )
+    tool = tools.get(tool_name)
+    if tool is None:
+        return {"tool_name": tool_name, "ok": False, "args": args, "result": {}, "error": f"unknown tool: {tool_name}"}
+    result = tool.invoke(args)
+    result = result if isinstance(result, dict) else {"value": result}
+    result_key = {
+        "log_context": "logs",
+        "source_search": "sources",
+        "case_search": "history_cases",
+        "knowledge_search": "knowledge_items",
+    }[tool_name]
+    return _tool_observation(tool_name, args, result, result_key)
 
 
 def _merge_report_evidence(report: Dict[str, Any], rule_report: Dict[str, Any]) -> Dict[str, Any]:
@@ -390,7 +391,7 @@ def _empty_report(state: DiagnosisState) -> Dict[str, Any]:
         "confidence": 0.15,
         "questions_for_human": [
             "飞书工单中的发生时间是否准确？",
-            "日志包是否包含 interaction、mc、hds、sm、agent 等关键模块？",
+            "日志包是否包含主模块及其关联模块的完整时间窗口日志？",
         ],
         "agent_version": "langgraph-diagnosis-v1",
         "status": "TASK_STATUS_SUCCEEDED",
@@ -431,6 +432,61 @@ def _keywords_from_logs(logs: List[Dict[str, Any]]) -> List[str]:
         if message:
             keywords.append(message[:120])
     return keywords[:5]
+
+
+def _analysis_modules(bug: Dict[str, Any], logs: List[Dict[str, Any]]) -> List[str]:
+    """Select source repositories from the observed modules, not one hard-coded module."""
+    result: List[str] = []
+    primary = str(bug.get("main_module") or "").strip()
+    if primary:
+        result.append(primary)
+    for log in logs:
+        module = str(log.get("module_name") or "").strip()
+        if module and module not in result:
+            result.append(module)
+    return result or ["unknown"]
+
+
+def _next_source_modules(state: DiagnosisState) -> List[str]:
+    modules = _analysis_modules(state.get("bug", {}), state.get("log_evidence") or [])
+    attempted = {
+        str(observation.get("args", {}).get("module_name") or "")
+        for observation in state.get("observations") or []
+        if observation.get("tool_name") == "source_search"
+    }
+    primary = modules[0]
+    if primary not in attempted:
+        return [primary]
+    if not state.get("source_evidence") or not _has_cross_module_reference(state, modules):
+        return []
+    return [module for module in modules[1:] if module not in attempted]
+
+
+def _has_cross_module_reference(state: DiagnosisState, modules: List[str]) -> bool:
+    primary = modules[0]
+    primary_text = "\n".join(
+        _log_search_text(log)
+        for log in state.get("log_evidence") or []
+        if str(log.get("module_name") or "") == primary
+    )
+    source_text = "\n".join(
+        str(source.get(key) or "")
+        for source in state.get("source_evidence") or []
+        for key in ("file_path", "function_name", "matched_text", "snippet")
+    )
+    searchable = f"{primary_text}\n{source_text}".lower()
+    for module in modules[1:]:
+        aliases = {module.lower(), module.lower().replace("_", "")}
+        if any(alias and alias in searchable for alias in aliases):
+            return True
+    return False
+
+
+def _log_search_text(log: Dict[str, Any]) -> str:
+    return " ".join(
+        str(log.get(key) or "")
+        for key in ("module_name", "file_name", "log_level", "message", "raw_line")
+    )
 
 
 def _unique_logs(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

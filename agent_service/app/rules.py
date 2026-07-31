@@ -246,7 +246,7 @@ def _low_confidence_report(
     selected_sources = [_normalize_source(source) for source in sources if source.get("file_path")][:10]
     module = str(bug.get("main_module") or "unknown")
     return {
-        "summary": "当前日志证据不足，未命中已知 interaction 诊断规则，不能给出高置信度结论。",
+        "summary": "当前日志证据不足，未命中已知模块诊断规则，不能给出高置信度结论。",
         "suspected_module": module,
         "possible_causes": ["需要补充发生时间窗口内的 interaction、mc、hds、sm、agent 日志后再判断。"],
         "execution_chain": [],
@@ -255,12 +255,12 @@ def _low_confidence_report(
         "recommended_actions": [
             "确认 Bug 发生时间是否准确。",
             "补充 occurred_time 前后 5 分钟多模块日志上下文。",
-            "优先检查 interaction.log 中请求入口、Checker、TaskFactory、WorkerManager 和 Skill 关键日志。",
+            "优先检查主模块及其关联模块日志中的请求入口、状态检查、任务创建、任务仲裁和底层调用关键日志。",
         ],
         "confidence": 0.25 if selected_logs or selected_sources else 0.15,
         "questions_for_human": [
             "飞书工单中的发生时间是否为机器人本地时间？",
-            "日志包是否包含 interaction、mc、hds、sm、agent 等关键模块？",
+            "日志包是否包含主模块及其关联模块的完整时间窗口日志？",
             "机器人类型是 T 型还是 Q 型，是否存在机型规则差异？",
         ],
         "agent_version": "rule-template-v1",
@@ -328,7 +328,7 @@ def _questions_for(matches: Sequence[RuleMatch], bug: Dict[str, Any], logs: Sequ
     if robot_type not in {"ROBOT_TYPE_T", "ROBOT_TYPE_Q", "T", "Q", "T1", "Q1"}:
         questions.append("请确认机器人类型，T 型和 Q 型 interaction 规则不同。")
     if not logs:
-        questions.append("请补充发生时间前后的 interaction.log 和 mc.log。")
+        questions.append("请补充发生时间前后主模块及关联模块的日志。")
     if any(match.name in {"action_skill_failed", "move_skill_odom_timeout"} for match in matches):
         questions.append("请确认 mc.log 中当前 action_id 是否进入可移动态。")
     if any(match.name == "low_battery_or_charging" for match in matches):

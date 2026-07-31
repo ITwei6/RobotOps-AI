@@ -22,7 +22,9 @@ class AgentSettings:
 def load_settings() -> AgentSettings:
     api_key = os.getenv("DEEPSEEK_API_KEY", "")
     llm_flag = os.getenv("ROBOTOPS_LLM_ENABLED", "true").strip().lower()
-    max_tool_iterations = _int_env("ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS", 4)
+    # A time-window diagnosis may need log collection, primary-source search,
+    # related-module searches, case retrieval, and knowledge retrieval.
+    max_tool_iterations = _int_env("ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS", 8)
     return AgentSettings(
         llm_enabled=bool(api_key) and llm_flag not in {"0", "false", "no", "off"},
         deepseek_api_key=api_key,

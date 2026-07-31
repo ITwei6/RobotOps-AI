@@ -2,6 +2,58 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.4：多模块时间窗口与 LangChain Tool 接入
+
+修改内容：
+
+- 日志上下文改为按 `log_package_id` 和发生时间窗口获取全部模块日志，不再只查询 `main_module`。
+- 源码检索改为主模块优先：先检索 `bug.main_module`，只有主模块日志或源码出现关联模块线索后，才继续检索 `mc`、`hal_*`、`hds`、`sm` 等关联模块。
+- 新增 `agent_service/app/langchain_tools.py`，使用 `langchain_core.tools.StructuredTool` 和 Pydantic 输入 schema 包装 `log_context`、`source_search`、`case_search`、`knowledge_search`。
+- `workflow.nodes._execute_tool()` 改为通过 LangChain Tool registry 调用工具。
+- `workflow/graph.py` 增加显式 `from langgraph.graph import END, START, StateGraph`；DeepSeek 模块增加显式 `from langchain_deepseek import ChatDeepSeek`。
+- 默认 Agent 工具轮次从 4 提升到 8，支持多模块时间窗口、主模块源码、关联模块源码和后续知识检索。
+- 增加 interaction 优先、mc 按关联线索展开的工作流测试。
+
+原因：
+
+- Agent 不能只分析 interaction，也不能把所有模块源码同时作为同等优先级分析对象。
+- 真实排障流程是先对齐同一发生时间点的多模块日志，再以主模块源码建立链路，发现跨模块调用后才深入其他模块。
+- LangGraph/LangChain 必须在代码结构中明确可见，不能只通过隐藏的动态导入或普通函数调用体现。
+
+影响范围：
+
+- `agent_service/app/langchain_tools.py`
+- `agent_service/app/workflow/graph.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/app/settings.py`
+- `agent_service/tests/test_workflow.py`
+- `agent_service/tests/test_deepseek.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 根据反馈修正“只围绕 interaction”以及“所有模块直接并行源码搜索”的设计。
+- 容器确认 `langgraph` 和 `langchain_core 1.5.3` 可用。
+- 当前 LangGraph 节点和 LangChain Tool 调用均已在代码中显式可见；DeepSeek 继续使用结构化输出 schema。
+
+验证结果：
+
+- Agent 全量测试：24 个测试全部通过。
+- `git diff --check`：待提交前执行。
+
+下一步：
+
+- 用同一时间窗口的真实本地日志验证 interaction 主链路触发 mc/hal/hds/sm 关联检索。
+- 继续为 LangChain Tool 增加独立 schema、错误和超时测试。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-31 阶段 6.3：CheckTouch 执行链诊断
 
 修改内容：

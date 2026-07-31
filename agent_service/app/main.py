@@ -11,7 +11,7 @@ from agent_service.app.workflow import run_diagnosis_workflow
 app = FastAPI(
     title="RobotOps AI Agent Service",
     version="0.1.0",
-    description="Rule-template diagnosis agent for robot interaction bug analysis.",
+    description="Evidence-driven diagnosis agent for multi-module robot software bugs.",
 )
 
 

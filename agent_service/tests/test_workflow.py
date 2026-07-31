@@ -111,7 +111,70 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["evidence_logs"][0]["line_no"], 42)
         self.assertIn("T1Checker::CheckTouch", report["evidence_sources"][0]["function_name"])
         fetch_log_context.assert_called_once()
+        self.assertEqual(fetch_log_context.call_args.kwargs["args"]["module_name"], "")
         search_source.assert_called_once()
+
+    @patch("agent_service.app.workflow.nodes.search_source")
+    @patch("agent_service.app.workflow.nodes.fetch_log_context")
+    def test_workflow_searches_source_for_each_observed_module(self, fetch_log_context, search_source):
+        fetch_log_context.return_value = {
+            "ok": True,
+            "logs": [
+                {
+                    "module_name": "interaction",
+                    "file_name": "interaction.log",
+                    "line_no": 10,
+                    "log_level": "error",
+                    "message": "interaction request failed",
+                },
+                {
+                    "module_name": "mc",
+                    "file_name": "mc.log",
+                    "line_no": 20,
+                    "log_level": "error",
+                    "message": "mc action failed",
+                },
+            ],
+        }
+
+        def source_result(*, args, **_kwargs):
+            module = args["module_name"]
+            return {
+                "ok": True,
+                "sources": [
+                    {
+                        "repo": module,
+                        "file_path": f"{module}/src/failure.cpp",
+                        "function_name": f"{module}::HandleFailure",
+                        "matched_text": "failed",
+                        "snippet": "calls mc SetMcAction" if module == "interaction" else "return false;",
+                    }
+                ],
+            }
+
+        search_source.side_effect = source_result
+        report = run_diagnosis_workflow(
+            {
+                "bug": {
+                    "bug_id": "bug-multi-module",
+                    "title": "机器人动作失败",
+                    "description": "interaction 请求失败，同时 mc 返回动作失败",
+                    "robot_type": "ROBOT_TYPE_T",
+                    "main_module": "interaction",
+                    "occurred_time": 1785396730000,
+                    "log_package_id": "pkg-multi-module",
+                },
+                "logs": [],
+            }
+        )
+
+        searched_modules = {call.kwargs["args"]["module_name"] for call in search_source.call_args_list}
+        self.assertEqual(searched_modules, {"interaction", "mc"})
+        self.assertEqual(search_source.call_args_list[0].kwargs["args"]["module_name"], "interaction")
+        self.assertEqual(
+            {source["repo"] for source in report["evidence_sources"]},
+            {"interaction", "mc"},
+        )
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
     @patch("agent_service.app.workflow.nodes.generate_structured_report")

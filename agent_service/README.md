@@ -37,7 +37,7 @@ Bug 描述 / 机器人类型 / 主模块
 
 后续演进：
 
-- 继续完善 LangGraph 的 `planner -> tool action -> observation -> report` 循环。
+- LangGraph 已编排 `planner -> tool_executor -> observation -> report` 循环；`tool_executor` 通过 `app/langchain_tools.py` 的 `StructuredTool` 执行日志、源码、案例和知识工具。
 - 继续接入历史案例检索和知识库/RAG。
 - RAG 是 Agent 的工具，不等于 Agent 本身。
 

@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 6.3：CheckTouch 执行链诊断阶段
+阶段 6.4：多模块时间窗口与 LangChain Tool 接入阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。已修复日志导入 bug_id 与诊断生成 bug_id 不一致时的 package 上下文取证问题，并完成真实 DeepSeek 三服务验证。已完成本地 interaction 源码证据链验证，并将 `CheckTouch` 触摸拦截场景结构化为 execution chain：触摸进入 interaction、前置检查拦截、未进入任务创建/派发阶段。远程 Git 仓库验证继续延期。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具、使用 LangChain DeepSeek 结构化输出。当前按发生时间获取多模块日志，先分析主模块源码，再根据主链路证据按需深入关联模块；`CheckTouch` 执行链已结构化。远程 Git 仓库验证继续延期。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

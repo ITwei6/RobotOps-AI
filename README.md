@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 6.3：CheckTouch 执行链诊断
+阶段 6.4：多模块时间窗口与 LangChain Tool 接入
 ```
 
 已完成：
@@ -302,8 +302,8 @@ CHANGES.md
 - `ticket-diagnosis-service` 初版：创建 Bug 单、创建诊断任务、保存和查询诊断报告。
 - `agent-service` 初版：FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
 - `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
-- 已完成 LangGraph / LangChain / ReAct 调研，当前正在设计 `agent-service` 的 `DiagnosisState`、节点、图结构、工具边界和降级策略。
-- `agent-service` 已开始落地 LangGraph workflow skeleton，`/diagnose` 内部走 `run_diagnosis_workflow()`，无 DeepSeek API key 时 fallback 到规则报告。
+- 已实际使用 LangGraph 编排 `normalize -> rule -> planner -> tool_executor -> observation -> report -> confidence -> finalize` 工作流。
+- 已实际使用 LangChain `StructuredTool` 和 Pydantic schema 包装日志、源码、案例、知识检索工具；DeepSeek 使用 `ChatDeepSeek.with_structured_output(DiagnosisReport)`。
 - `agent-service` 已接入 `log_context` 和 `source_search` 工具初版，可通过工作流主动拉取 log-service 上下文并检索本地 interaction 源码。
 - `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 
@@ -330,6 +330,7 @@ CHANGES.md
 - 本阶段已验证本地 interaction 源码能返回真实文件路径、`T1Checker::CheckTouch` 函数名、匹配文本和代码片段。
 - 源码证据会附带平台注册的本地 branch/commit；本地 Git 工作区同步返回的 revision 也会作为证据版本。
 - 诊断报告新增 `execution_chain`，当前已实现触摸事件进入 interaction、`CheckTouch` 拦截、未进入任务创建/派发阶段的执行链表达。
+- 日志上下文按发生时间窗口获取全部模块；源码先分析 `main_module`，发现主链路引用其他模块后，再按需检索 `mc`、`hal_*`、`hds`、`sm` 等模块源码。
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。
 - 测试人员输入保持聚焦于 Bug 现象、发生时间、机器人类型/模块和日志包；仓库更新由 Agent 根据平台注册表自动完成。

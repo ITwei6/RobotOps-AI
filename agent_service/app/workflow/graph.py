@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+try:
+    from langgraph.graph import END, START, StateGraph
+except ImportError:  # pragma: no cover - keeps a deterministic fallback for minimal installs.
+    END = START = StateGraph = None
+
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.workflow.nodes import (
     choose_report_node,
@@ -25,9 +30,7 @@ from agent_service.app.workflow.state import DiagnosisState
 
 
 def build_diagnosis_graph():
-    try:
-        from langgraph.graph import END, START, StateGraph
-    except ImportError:
+    if StateGraph is None:
         return _SequentialDiagnosisGraph()
 
     builder = StateGraph(DiagnosisState)

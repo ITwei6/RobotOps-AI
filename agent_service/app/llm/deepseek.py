@@ -4,6 +4,11 @@ from typing import Any, Dict, List
 
 from agent_service.app.models import DiagnosisReport
 
+try:
+    from langchain_deepseek import ChatDeepSeek
+except ImportError:  # pragma: no cover - optional until a live DeepSeek call is enabled.
+    ChatDeepSeek = None
+
 
 class DeepSeekUnavailable(RuntimeError):
     pass
@@ -15,10 +20,8 @@ def generate_structured_report(
     request: Dict[str, Any],
     rule_report: Dict[str, Any],
 ) -> Dict[str, Any]:
-    try:
-        from langchain_deepseek import ChatDeepSeek
-    except ImportError as exc:
-        raise DeepSeekUnavailable("langchain-deepseek is not installed") from exc
+    if ChatDeepSeek is None:
+        raise DeepSeekUnavailable("langchain-deepseek is not installed")
 
     try:
         llm = ChatDeepSeek(model=model, temperature=0, max_retries=2)

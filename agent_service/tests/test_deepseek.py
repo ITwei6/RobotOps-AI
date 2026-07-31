@@ -1,5 +1,3 @@
-import sys
-import types
 import unittest
 from unittest.mock import patch
 
@@ -41,8 +39,7 @@ class FakeStructuredDeepSeek:
 
 class DeepSeekWrapperTest(unittest.TestCase):
     def test_generate_structured_report_uses_langchain_deepseek_schema(self):
-        fake_module = types.SimpleNamespace(ChatDeepSeek=FakeStructuredDeepSeek)
-        with patch.dict(sys.modules, {"langchain_deepseek": fake_module}):
+        with patch("agent_service.app.llm.deepseek.ChatDeepSeek", FakeStructuredDeepSeek):
             report = generate_structured_report(
                 model="deepseek-v4-flash",
                 request={
