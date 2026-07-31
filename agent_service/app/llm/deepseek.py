@@ -44,6 +44,7 @@ def _build_prompt(request: Dict[str, Any], rule_report: Dict[str, Any]) -> str:
         "你是 RobotOps AI 的机器人研发 Bug 诊断 Agent。\n"
         "你必须输出符合 DiagnosisReport schema 的结构化结果。\n"
         "只允许基于输入的 Bug、日志证据、源码证据、历史案例、知识库和规则 baseline 生成报告。\n"
+        "execution_chain 只能描述规则 baseline 或证据支持的执行阶段，不能把未观测到的阶段写成确定事实。\n"
         "不能编造日志行、源码路径、函数名、故障码或责任模块。\n"
         "如果日志证据不足，confidence 必须 <= 0.35，并在 questions_for_human 中要求补充日志。\n"
         "如果只有日志证据、没有源码证据，confidence 必须 <= 0.85。\n"

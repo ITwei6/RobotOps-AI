@@ -2,6 +2,53 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.3：CheckTouch 执行链诊断
+
+修改内容：
+
+- 扩展 `DiagnosisReport`，新增 `execution_chain` 字段，用于表达证据支持的 interaction 执行阶段。
+- 为 `touch_action_blocked` 规则生成完整链路：触摸事件进入 interaction -> `T1 CheckTouch` 前置检查拦截 -> 未进入触摸任务创建/派发阶段。
+- LLM prompt 明确要求保留证据支持的执行链，不得把未观测阶段写成确定事实；LLM 合并报告时保留规则 baseline 的执行链。
+- 增加规则和工作流断言，确保 CheckTouch 链路在规则 fallback 和 LLM 报告路径中都存在。
+
+原因：
+
+- 单独的“当前 action 导致触摸被忽略”结论还不足以帮助开发工程师判断问题停在哪个 interaction 阶段。
+- 需要把真实源码对应的 `CheckTouch` 拦截点与后续任务创建/派发未发生的判断明确分层，同时避免 Agent 编造未观察到的 Worker/MC 行为。
+
+影响范围：
+
+- `agent_service/app/models.py`
+- `agent_service/app/rules.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/tests/test_rules.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先确认已有 `CheckTouch` 日志规则和本地源码证据链，再只实现一个完整执行链案例，没有同时扩展 `CheckMove`、`TaskFactory`、`WorkerManager`。
+- 新字段使用默认空列表，兼容旧报告和 DeepSeek 结构化响应；规则 fallback 和 LLM 成功/失败路径均经过测试。
+
+验证结果：
+
+- Agent 全量测试：23 个测试全部通过。
+- `ticket_diagnosis_service` 在 `dev-env-service` 容器内编译通过。
+- `git diff --check`：待提交前执行。
+
+下一步：
+
+- 基于真实本地 interaction 日志，再选择一个 `TaskFactory` 或 `WorkerManager` 场景扩展 execution chain。
+- `CheckMove`、`ActionSkill`、`MoveSkill` 继续按真实日志证据逐个增加，不一次性铺开推断。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-31 阶段 6.2：本地 interaction 源码证据链
 
 修改内容：

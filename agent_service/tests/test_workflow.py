@@ -40,6 +40,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
         self.assertGreaterEqual(report["confidence"], 0.8)
+        self.assertIn("T1 CheckTouch 前置检查拦截", report["execution_chain"])
         self.assertEqual(report["evidence_sources"], [])
 
     def test_workflow_keeps_low_confidence_without_evidence(self):
@@ -133,6 +134,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
         self.assertIn("LLM", report["summary"])
         self.assertEqual(report["evidence_logs"][0]["line_no"], 3)
+        self.assertIn("未进入触摸任务创建/派发阶段", report["execution_chain"])
         self.assertEqual(report["evidence_sources"], [])
         self.assertGreaterEqual(report["confidence"], 0.85)
         generate_structured_report.assert_called_once()

@@ -296,6 +296,8 @@ def _merge_report_evidence(report: Dict[str, Any], rule_report: Dict[str, Any]) 
 
     if not merged.get("possible_causes"):
         merged["possible_causes"] = list(rule_report.get("possible_causes") or [])
+    if not merged.get("execution_chain"):
+        merged["execution_chain"] = list(rule_report.get("execution_chain") or [])
     if not merged.get("recommended_actions"):
         merged["recommended_actions"] = list(rule_report.get("recommended_actions") or [])
     if not merged.get("suspected_module"):
@@ -381,6 +383,7 @@ def _empty_report(state: DiagnosisState) -> Dict[str, Any]:
         "summary": "当前证据不足，Agent 工作流无法给出高置信度结论。",
         "suspected_module": str(bug.get("main_module") or "unknown"),
         "possible_causes": ["需要补充发生时间窗口内的 interaction、mc、hds、sm、agent 日志后再判断。"],
+        "execution_chain": [],
         "evidence_logs": [],
         "evidence_sources": [],
         "recommended_actions": ["确认 Bug 发生时间、机器人类型和日志包是否完整。"],

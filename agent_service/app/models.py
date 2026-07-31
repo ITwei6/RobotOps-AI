@@ -52,6 +52,7 @@ class DiagnosisReport(BaseModel):
     summary: str
     suspected_module: str
     possible_causes: List[str]
+    execution_chain: List[str] = Field(default_factory=list)
     evidence_logs: List[LogEvidence]
     evidence_sources: List[SourceEvidence]
     recommended_actions: List[str]

@@ -184,6 +184,7 @@ def diagnose(payload: Dict[str, Any]) -> Dict[str, Any]:
         "summary": "；".join(summary_parts),
         "suspected_module": suspected_module,
         "possible_causes": possible_causes,
+        "execution_chain": _execution_chain(matches),
         "evidence_logs": selected_logs,
         "evidence_sources": selected_sources,
         "recommended_actions": recommended_actions,
@@ -248,6 +249,7 @@ def _low_confidence_report(
         "summary": "当前日志证据不足，未命中已知 interaction 诊断规则，不能给出高置信度结论。",
         "suspected_module": module,
         "possible_causes": ["需要补充发生时间窗口内的 interaction、mc、hds、sm、agent 日志后再判断。"],
+        "execution_chain": [],
         "evidence_logs": selected_logs,
         "evidence_sources": selected_sources,
         "recommended_actions": [
@@ -276,6 +278,31 @@ def _choose_suspected_module(matches: Sequence[RuleMatch], bug: Dict[str, Any]) 
         module_scores[main_module] += 0.1
 
     return max(module_scores.items(), key=lambda item: item[1])[0]
+
+
+def _execution_chain(matches: Sequence[RuleMatch]) -> List[str]:
+    """Describe only execution stages supported by matched evidence."""
+    chain: List[str] = []
+    names = {match.name for match in matches}
+    if "touch_action_blocked" in names:
+        chain.extend(
+            [
+                "触摸事件进入 interaction",
+                "T1 CheckTouch 前置检查拦截",
+                "未进入触摸任务创建/派发阶段",
+            ]
+        )
+    if "self_check_not_passed" in names:
+        chain.append("self check 未通过，任务派发被跳过")
+    if "task_factory_failed" in names:
+        chain.append("TaskFactory 任务创建失败")
+    if "worker_rejected" in names:
+        chain.append("WorkerManager 仲裁拒绝任务")
+    if "action_skill_failed" in names:
+        chain.append("ActionSkill 调用 MC action 失败或超时")
+    if "move_skill_odom_timeout" in names:
+        chain.append("MoveSkill 已发布移动请求但等待运动反馈超时")
+    return list(dict.fromkeys(chain))
 
 
 def _calculate_confidence(

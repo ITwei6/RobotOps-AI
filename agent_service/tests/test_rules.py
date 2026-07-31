@@ -34,6 +34,14 @@ class DiagnoseRulesTest(unittest.TestCase):
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertEqual(report["evidence_logs"][0]["line_no"], 3)
+        self.assertEqual(
+            report["execution_chain"],
+            [
+                "触摸事件进入 interaction",
+                "T1 CheckTouch 前置检查拦截",
+                "未进入触摸任务创建/派发阶段",
+            ],
+        )
         self.assertEqual(report["evidence_sources"], [])
         self.assertTrue(any("T1Checker::CheckTouch" in question for question in report["questions_for_human"]))
 
