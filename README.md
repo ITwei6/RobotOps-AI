@@ -293,7 +293,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 6.0：诊断日志包关联修复
+阶段 6.1：源码证据真实性与 Agent 取证路由修复
 ```
 
 已完成：
@@ -323,6 +323,9 @@ CHANGES.md
 - `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 120 秒，覆盖 DeepSeek 结构化报告的正常响应时间。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
+- 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
+- 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。
+- Agent 工具路由已记录失败工具的尝试状态，源码仓库未配置时不会重复消耗工具轮次，仍可继续检索历史案例和知识库。
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。
 - 测试人员输入保持聚焦于 Bug 现象、发生时间、机器人类型/模块和日志包；仓库更新由 Agent 根据平台注册表自动完成。

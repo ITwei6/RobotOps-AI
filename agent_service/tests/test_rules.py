@@ -34,7 +34,8 @@ class DiagnoseRulesTest(unittest.TestCase):
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertEqual(report["evidence_logs"][0]["line_no"], 3)
-        self.assertIn("T1Checker::CheckTouch", report["evidence_sources"][0]["function_name"])
+        self.assertEqual(report["evidence_sources"], [])
+        self.assertTrue(any("T1Checker::CheckTouch" in question for question in report["questions_for_human"]))
 
     def test_low_confidence_without_evidence(self):
         report = diagnose(

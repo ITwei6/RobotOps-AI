@@ -2,6 +2,52 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 6.1：源码证据真实性与 Agent 取证路由修复
+
+修改内容：
+
+- 修复 `agent_service/app/rules.py`：规则模板命中的 `T1Checker::CheckTouch` 等源码位置不再直接写入 `evidence_sources`，改为写入 `questions_for_human`，提示继续执行源码检索。
+- 保留真实 `source_search` 结果进入 `evidence_sources` 的路径，并要求结果包含实际 `file_path`，避免把导航 hint 当成已验证源码证据。
+- 修复 LangGraph planner：`source_search` 已尝试但仓库未配置或检索失败时，不再重复调用源码工具；工作流可以继续检索历史案例和知识库。
+- 清理 source search 请求中的重复 `module_name` 字段。
+- 更新规则和工作流测试，覆盖规则-only 无源码证据、真实工具源码证据保留、LLM 合并后证据边界和失败工具继续路由。
+
+原因：
+
+- 真实 DeepSeek live 验证发现，规则模板生成的源码路径和函数名只是排查方向，不能标记为已经从目标仓库检索并核验的证据。
+- 源码仓库未配置时，重复 source search 会耗尽 LangGraph 工具轮次，导致历史案例和知识库无法执行。
+
+影响范围：
+
+- `agent_service/app/rules.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_rules.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `AGENTS.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 在不写入文件、命令行参数或测试日志的前提下，用安全注入方式完成真实 DeepSeek 三服务链路验证。
+- 验证结果：`task_status=TASK_STATUS_SUCCEEDED`、`suspected_module=interaction`、日志证据 4 条、置信度 `0.75`；修复后规则 fallback 报告保留日志证据，源码证据为空，并给出 `T1Checker::CheckTouch` 的源码检索提示。
+- 定位并修复 source search 失败后的重复路由，随后验证历史案例和知识库检索测试恢复通过。
+
+验证结果：
+
+- `dev-env-service` 容器内 Agent 全量测试：21 个测试全部通过。
+- `dev-env-service` 容器内 C++ 构建：`ticket_diagnosis_service` 构建通过。
+- `git diff --check`：通过。
+
+下一步：
+
+- 使用平台管理员配置的真实 interaction 仓库 URL 做 clone/pull、branch/commit 固定和源码证据 live smoke。
+- 继续将 interaction 的 `CheckTouch`、`CheckMove`、`TaskFactory`、`WorkerManager`、`ActionSkill` 和 `MoveSkill` 排障经验沉淀为可检索证据与历史案例。
+
+是否已提交 Git：
+
+- 是。本阶段记录与代码一并提交。
+
 ## 2026-07-30 阶段 0：项目重新定位与文档约束
 
 修改内容：

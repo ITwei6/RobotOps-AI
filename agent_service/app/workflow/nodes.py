@@ -72,7 +72,12 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
             ],
         )
 
-    if state.get("log_evidence") and not state.get("source_evidence") and _can_use_more_tools(state):
+    if (
+        state.get("log_evidence")
+        and not state.get("source_evidence")
+        and not _tool_was_attempted(state, "source_search")
+        and _can_use_more_tools(state)
+    ):
         return _plan(
             "search_source",
             "已有日志证据但缺少源码证据，检索 interaction 关键源码位置。",
@@ -84,7 +89,6 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                         "module_name": bug.get("main_module", "interaction"),
                         "branch": bug.get("branch", ""),
                         "commit": bug.get("commit", ""),
-                        "module_name": bug.get("main_module", "interaction"),
                         "keywords": _keywords_from_logs(state.get("log_evidence") or []),
                         "max_results": 10,
                     },

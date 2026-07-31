@@ -231,34 +231,9 @@ def _merge_source_evidence(
     matches: Sequence[RuleMatch],
     bug: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    result = [_normalize_source(source) for source in sources if source.get("file_path")]
-    existing = {(item.get("file_path", ""), item.get("function_name", "")) for item in result}
-
-    repo = _repo_name(bug.get("source_repo", "")) or "interaction"
-    branch = str(bug.get("branch", ""))
-    commit = str(bug.get("commit", ""))
-    for match in matches:
-        if not match.source_hint_key:
-            continue
-        hint = INTERACTION_SOURCE_HINTS.get(match.source_hint_key)
-        if not hint:
-            continue
-        key = (hint["file_path"], hint["function_name"])
-        if key in existing:
-            continue
-        result.append(
-            {
-                "repo": repo,
-                "branch": branch,
-                "commit": commit,
-                "file_path": hint["file_path"],
-                "function_name": hint["function_name"],
-                "matched_text": hint["matched_text"],
-                "snippet": "",
-            }
-        )
-        existing.add(key)
-    return result[:20]
+    # Rule hints are navigation suggestions, not source evidence. Only a source
+    # tool result with a real file path may enter evidence_sources.
+    return [_normalize_source(source) for source in sources if source.get("file_path")][:20]
 
 
 def _low_confidence_report(
@@ -331,6 +306,13 @@ def _questions_for(matches: Sequence[RuleMatch], bug: Dict[str, Any], logs: Sequ
         questions.append("请确认 mc.log 中当前 action_id 是否进入可移动态。")
     if any(match.name == "low_battery_or_charging" for match in matches):
         questions.append("请确认问题发生时机器人是否正在充电或处于低电量等级。")
+    source_hints = [
+        INTERACTION_SOURCE_HINTS[match.source_hint_key]["function_name"]
+        for match in matches
+        if match.source_hint_key in INTERACTION_SOURCE_HINTS
+    ]
+    if source_hints:
+        questions.append("请通过源码检索确认以下位置：" + "、".join(dict.fromkeys(source_hints)) + "。")
     if not questions:
         questions.append("请开发工程师确认日志证据与源码位置是否匹配当前分支/commit。")
     return questions

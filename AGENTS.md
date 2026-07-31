@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 6.0：诊断日志包关联修复阶段
+阶段 6.1：源码证据真实性与 Agent 取证路由修复阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。当前阶段已修复日志导入 bug_id 与诊断生成 bug_id 不一致时的 package 上下文取证问题，并完成真实三服务验证。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排、`agent-service` LangGraph 工作流骨架、`log_context` / `source_search` / `case_search` / `knowledge_search` 工具取证入口，以及 DeepSeek 结构化报告节点的 mock 可测路径和失败 fallback。已修复日志导入 bug_id 与诊断生成 bug_id 不一致时的 package 上下文取证问题，并完成真实 DeepSeek 三服务验证。本阶段进一步修复规则源码提示与真实源码证据的边界，以及源码检索失败时重复路由导致历史案例和知识库无法执行的问题。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

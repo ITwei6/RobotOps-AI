@@ -40,7 +40,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
         self.assertGreaterEqual(report["confidence"], 0.8)
-        self.assertIn("T1Checker::CheckTouch", report["evidence_sources"][0]["function_name"])
+        self.assertEqual(report["evidence_sources"], [])
 
     def test_workflow_keeps_low_confidence_without_evidence(self):
         report = run_diagnosis_workflow(
@@ -133,8 +133,8 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
         self.assertIn("LLM", report["summary"])
         self.assertEqual(report["evidence_logs"][0]["line_no"], 3)
-        self.assertIn("T1Checker::CheckTouch", report["evidence_sources"][0]["function_name"])
-        self.assertGreaterEqual(report["confidence"], 0.9)
+        self.assertEqual(report["evidence_sources"], [])
+        self.assertGreaterEqual(report["confidence"], 0.85)
         generate_structured_report.assert_called_once()
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
@@ -147,7 +147,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
         self.assertLessEqual(report["confidence"], 0.75)
-        self.assertIn("T1Checker::CheckTouch", report["evidence_sources"][0]["function_name"])
+        self.assertEqual(report["evidence_sources"], [])
         generate_structured_report.assert_called_once()
 
     def test_workflow_adds_historical_case_as_reference(self):
