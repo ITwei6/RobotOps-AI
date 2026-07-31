@@ -2,6 +2,64 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 7.3：诊断报告字段全链路透传
+
+修改内容：
+
+- 扩展 Agent `DiagnosisReport`，新增 `generation_mode` 和 `generation_detail`，明确区分 `deepseek`、`llm_fallback`、`deterministic_fallback`。
+- DeepSeek 成功分支写入真实模型生成状态；fallback 分支写入不含密钥和底层异常细节的降级说明。
+- 扩展 C++ `ticket_diagnosis.proto`，新增 `DiagnosisModuleRelation`，并为报告增加执行链、模块关系、Agent 版本和生成模式字段。
+- 扩展 `AgentClient` JSON 映射，保留模块关系证据引用、时间差及双方日志文件行号。
+- 修复 LLM 成功分支遗漏 LangGraph state 中 `module_relations` 的问题，确保模型报告不会覆盖工作流已经确认的关系证据。
+- Web 报告头部新增“DeepSeek 生成 / LLM 已降级 / 规则报告”文本状态，直接使用后端字段；移除真实响应缺少执行链时的业务占位链。
+
+原因：
+
+- 阶段 7.2 已能真实调用 DeepSeek，但 C++ proto 会丢弃 Agent 的执行链、模块关系和生成方式，前端无法判断显示的是模型报告还是 fallback。
+- 诊断证据必须跨服务保持一致，不能由浏览器根据置信度猜测，也不能让 LLM 成功分支丢掉 LangGraph 已确认的关系状态。
+
+影响范围：
+
+- `agent_service/app/models.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/tests/test_workflow.py`
+- `proto/ticket_diagnosis.proto`
+- `backend/services/ticket_diagnosis_service/src/agent_client.cc`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `docs/03_data_model.md`
+- `docs/05_web_frontend_design.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 首次端到端验证确认 `execution_chain` 和 `generation_mode=deepseek` 已成功透传。
+- 使用明确包含 `interaction calls mc` 和相隔 20ms 的 mc 日志验证关系字段时，发现 LLM 成功报告没有合并 state 中的 `module_relations`。
+- 修复工作流合并逻辑并增加回归测试后，再次通过前端代理和 C++ 服务验证完整关系字段。
+- 前端状态控件沿用 `ui-ux-pro-max` 的高密度运维工作台规则，使用文本加语义色表达生成方式，避免只依赖颜色。
+
+验证结果：
+
+- C++ `ticket_diagnosis_service` 在 `dev-env-service` 容器内重新生成 protobuf 并编译通过。
+- Agent 全量测试：25 个测试全部通过；LLM 模块关系定向测试通过。
+- 前端 `npm run build`：通过。
+- 完整链路报告返回 `generation_mode=deepseek`、真实执行链和 `interaction -> mc` 模块关系。
+- 模块关系包含 `time_delta_ms=20`、`interaction.log:100` 和 `mc.log:200`。
+- `git diff --check`：通过；Git 差异敏感信息模式检查通过。
+
+下一步：
+
+- 增加页面初始化健康检查，分别显示 Web、ticket、Agent、log-service 状态。
+- 将诊断任务和报告从内存存储迁移到 MySQL，避免服务重启后 Bug 和报告丢失。
+- 增加 C++ AgentClient JSON 映射的自动化集成测试。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-07-31 阶段 7.2：DeepSeek 真实结构化报告联调
 
 修改内容：

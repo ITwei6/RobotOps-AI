@@ -21,6 +21,7 @@
 - 本地 interaction 目录可以通过源码仓库注册表的 `local_path` 使用；检索结果会保留配置的 branch/commit，未指定 commit 时使用本地 Git 工作区同步返回的 revision。
 - `DiagnosisReport.execution_chain` 用于表达日志和规则支持的执行阶段；当前覆盖 `CheckTouch` 拦截链，不代表未观测到的后续阶段已被证明。
 - `DiagnosisReport.module_relations` 记录主模块到关联模块的关系、触发原因、证据类型和证据引用；只有该状态确认关联后，workflow 才继续检索关联模块源码。
+- `DiagnosisReport.generation_mode` 明确区分 `deepseek`、`llm_fallback` 和 `deterministic_fallback`；`generation_detail` 只记录非敏感运行说明。
 - 如果双方日志存在有效 `log_time`，模块关系还会记录 `time_delta_ms`、`source_log_ref` 和 `target_log_ref`；源码证据会覆盖同一关系的早期日志提示，但保留时间线字段。
 
 当前策略：

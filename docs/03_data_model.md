@@ -85,6 +85,11 @@ CREATE TABLE diagnosis_report (
   summary TEXT,
   evidence_logs JSON,
   evidence_sources JSON,
+  execution_chain JSON,
+  module_relations JSON,
+  agent_version VARCHAR(64),
+  generation_mode VARCHAR(32),
+  generation_detail VARCHAR(255),
   suggestion TEXT,
   confidence DECIMAL(5,2),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -92,4 +97,3 @@ CREATE TABLE diagnosis_report (
   FOREIGN KEY (bug_id) REFERENCES bug_ticket(id)
 );
 ```
-

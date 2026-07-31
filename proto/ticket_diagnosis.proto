@@ -55,6 +55,17 @@ message DiagnosisSourceEvidence {
   string snippet = 7;
 }
 
+message DiagnosisModuleRelation {
+  string from_module = 1;
+  string to_module = 2;
+  string reason = 3;
+  string evidence_type = 4;
+  repeated string evidence_refs = 5;
+  int64 time_delta_ms = 6;
+  string source_log_ref = 7;
+  string target_log_ref = 8;
+}
+
 message DiagnosisReport {
   string report_id = 1;
   string task_id = 2;
@@ -70,6 +81,11 @@ message DiagnosisReport {
   repeated string questions_for_human = 12;
   int64 created_at = 13;
   int64 updated_at = 14;
+  repeated string execution_chain = 15;
+  repeated DiagnosisModuleRelation module_relations = 16;
+  string agent_version = 17;
+  string generation_mode = 18;
+  string generation_detail = 19;
 }
 
 message CreateBugTicketRequest {

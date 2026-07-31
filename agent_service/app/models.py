@@ -60,6 +60,8 @@ class DiagnosisReport(BaseModel):
     confidence: float
     questions_for_human: List[str]
     agent_version: str = "rule-template-v1"
+    generation_mode: str = "deterministic_fallback"
+    generation_detail: str = ""
     status: str = "TASK_STATUS_SUCCEEDED"
 
 

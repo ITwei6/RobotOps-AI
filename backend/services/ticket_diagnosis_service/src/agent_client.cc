@@ -126,6 +126,19 @@ void fillSourceEvidence(const Json::Value& value, robotops::ticket_diagnosis::Di
     source->set_snippet(value.get("snippet", "").asString());
 }
 
+void fillModuleRelation(const Json::Value& value, robotops::ticket_diagnosis::DiagnosisModuleRelation* relation) {
+    relation->set_from_module(value.get("from_module", "").asString());
+    relation->set_to_module(value.get("to_module", "").asString());
+    relation->set_reason(value.get("reason", "").asString());
+    relation->set_evidence_type(value.get("evidence_type", "").asString());
+    relation->set_time_delta_ms(value.get("time_delta_ms", Json::Int64(0)).asInt64());
+    relation->set_source_log_ref(value.get("source_log_ref", "").asString());
+    relation->set_target_log_ref(value.get("target_log_ref", "").asString());
+    for (const auto& evidence_ref : value["evidence_refs"]) {
+        relation->add_evidence_refs(evidence_ref.asString());
+    }
+}
+
 robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     const Json::Value& value,
     const robotops::ticket_diagnosis::BugTicket& ticket,
@@ -137,6 +150,9 @@ robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     report.set_suspected_module(value.get("suspected_module", ticket.main_module()).asString());
     report.set_summary(value.get("summary", "").asString());
     report.set_confidence(value.get("confidence", 0.0).asDouble());
+    report.set_agent_version(value.get("agent_version", "").asString());
+    report.set_generation_mode(value.get("generation_mode", "deterministic_fallback").asString());
+    report.set_generation_detail(value.get("generation_detail", "").asString());
 
     for (const auto& cause : value["possible_causes"]) {
         report.add_possible_causes(cause.asString());
@@ -146,6 +162,12 @@ robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     }
     for (const auto& question : value["questions_for_human"]) {
         report.add_questions_for_human(question.asString());
+    }
+    for (const auto& step : value["execution_chain"]) {
+        report.add_execution_chain(step.asString());
+    }
+    for (const auto& relation_value : value["module_relations"]) {
+        fillModuleRelation(relation_value, report.add_module_relations());
     }
     for (const auto& log_value : value["evidence_logs"]) {
         fillLogEvidence(log_value, report.add_evidence_logs());

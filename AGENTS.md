@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 7.2：DeepSeek 真实结构化报告联调阶段
+阶段 7.3：诊断报告字段全链路透传阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 `DiagnosisReport` JSON schema 完成真实结构化报告调用，失败时仍安全 fallback。React + TypeScript + Vite Web 工作台已通过 `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完成端到端联调。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 `DiagnosisReport` JSON schema 完成真实结构化报告调用，失败时仍安全 fallback。React + TypeScript + Vite Web 工作台已通过 `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完成端到端联调；C++ proto 现已完整透传执行链、模块关系、Agent 版本和 DeepSeek/fallback 生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 

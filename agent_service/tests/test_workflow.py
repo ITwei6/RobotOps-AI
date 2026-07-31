@@ -39,6 +39,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
 
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
+        self.assertEqual(report["generation_mode"], "deterministic_fallback")
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertIn("T1 CheckTouch 前置检查拦截", report["execution_chain"])
         self.assertEqual(report["evidence_sources"], [])
@@ -200,14 +201,32 @@ class DiagnosisWorkflowTest(unittest.TestCase):
             "status": "TASK_STATUS_SUCCEEDED",
         }
 
-        report = run_diagnosis_workflow(self.touch_payload)
+        payload = json.loads(json.dumps(self.touch_payload))
+        payload["logs"][0]["message"] += ", mc state observed"
+        payload["logs"].append(
+            {
+                "module_name": "mc",
+                "file_name": "mc.log",
+                "line_no": 20,
+                "log_time": 1785396730170,
+                "log_level": "info",
+                "message": "mc action remains PASSIVE_DEFAULT",
+                "raw_line": "mc action remains PASSIVE_DEFAULT",
+            }
+        )
+        report = run_diagnosis_workflow(payload)
 
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
+        self.assertEqual(report["generation_mode"], "deepseek")
+        self.assertIn("deepseek-v4-flash", report["generation_detail"])
         self.assertIn("LLM", report["summary"])
         self.assertEqual(report["evidence_logs"][0]["line_no"], 3)
         self.assertIn("未进入触摸任务创建/派发阶段", report["execution_chain"])
         self.assertEqual(report["evidence_sources"], [])
         self.assertGreaterEqual(report["confidence"], 0.85)
+        self.assertEqual(report["module_relations"][0]["from_module"], "interaction")
+        self.assertEqual(report["module_relations"][0]["to_module"], "mc")
+        self.assertEqual(report["module_relations"][0]["time_delta_ms"], 20)
         generate_structured_report.assert_called_once()
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
@@ -219,6 +238,8 @@ class DiagnosisWorkflowTest(unittest.TestCase):
 
         self.assertEqual(report["suspected_module"], "interaction")
         self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
+        self.assertEqual(report["generation_mode"], "llm_fallback")
+        self.assertIn("deterministic report", report["generation_detail"])
         self.assertLessEqual(report["confidence"], 0.75)
         self.assertEqual(report["evidence_sources"], [])
         generate_structured_report.assert_called_once()
