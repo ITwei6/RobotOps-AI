@@ -272,7 +272,12 @@ def _skip_symbol(value: str, owner_names: set[str]) -> bool:
     }:
         return True
     upper = value.upper()
-    return upper == value and ("LOG" in upper or len(value) <= 3)
+    log_suffixes = ("_TRACE", "_DEBUG", "_INFO", "_WARN", "_ERROR", "_FATAL", "_CRITICAL")
+    return upper == value and (
+        "LOG" in upper
+        or upper.endswith(log_suffixes)
+        or len(value) <= 3
+    )
 
 
 def _source_ref(source: Dict[str, Any]) -> str:

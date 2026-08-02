@@ -22,7 +22,7 @@ from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
 
 
-AGENT_VERSION = "langgraph-diagnosis-v2"
+AGENT_VERSION = "langgraph-diagnosis-v3"
 
 
 def normalize_input_node(state: DiagnosisState) -> DiagnosisState:
@@ -106,7 +106,7 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                         "branch": bug.get("branch", ""),
                         "commit": bug.get("commit", ""),
                         "keywords": [followup["query"]],
-                        "max_results": 8,
+                        "max_results": 3,
                     },
                 }
             ],
@@ -130,7 +130,7 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                             logs=state.get("log_evidence") or [],
                             module_name=module,
                         ),
-                        "max_results": 10,
+                        "max_results": 6,
                     },
                 }
                 for module in modules[:1]
@@ -423,6 +423,7 @@ def _execute_tool(request: ToolRequest) -> ToolObservation:
         timeout_seconds=settings.tool_timeout_seconds,
         source_roots=settings.source_search_roots,
         source_workspace_root=settings.source_workspace_root,
+        source_index_root=settings.source_index_root,
         source_repository_file=settings.source_repository_file,
         case_roots=settings.case_search_roots,
         knowledge_roots=settings.knowledge_search_roots,
@@ -516,6 +517,8 @@ def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, An
     payload = {result_key: list(result.get(result_key) or [])}
     if "source_sync" in result:
         payload["source_sync"] = dict(result.get("source_sync") or {})
+    if "source_index" in result:
+        payload["source_index"] = dict(result.get("source_index") or {})
     observation: ToolObservation = {"tool_name": tool_name, "ok": ok, "args": args, "result": payload}
     if not ok:
         observation["error"] = str(result.get("error") or f"{tool_name} failed")
@@ -1083,7 +1086,32 @@ def _source_generation_detail(state: DiagnosisState) -> str:
     mode = str(investigation.get("planning_mode") or "not_run")
     rounds = int(state.get("source_analysis_iteration") or 0)
     stop = bool(investigation.get("stop"))
-    return f"source planning={mode}, rounds={rounds}, stop={str(stop).lower()}"
+    index_statuses = [
+        dict((observation.get("result") or {}).get("source_index") or {})
+        for observation in state.get("observations") or []
+        if observation.get("tool_name") == "source_search"
+        and (observation.get("result") or {}).get("source_index")
+    ]
+    strategies = list(
+        dict.fromkeys(
+            str(status.get("search_strategy") or "")
+            for status in index_statuses
+            if status.get("search_strategy")
+        )
+    )
+    refresh_actions = list(
+        dict.fromkeys(
+            str(status.get("action") or "")
+            for status in index_statuses
+            if status.get("action")
+        )
+    )
+    strategy = "+".join(strategies) or "not_run"
+    refresh = "+".join(refresh_actions) or "not_run"
+    return (
+        f"source planning={mode}, rounds={rounds}, stop={str(stop).lower()}; "
+        f"source index={strategy}, refresh={refresh}"
+    )
 
 
 def _trace(node: str, event: str, detail: str) -> GraphTraceEvent:

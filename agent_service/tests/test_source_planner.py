@@ -128,6 +128,7 @@ class SourcePlannerTest(unittest.TestCase):
         self.assertNotIn("Scheduler::HandleRequest", queries)
         self.assertNotIn("TaskFactory::GetInstance", queries)
         self.assertFalse(any("LOG" in query for query in queries))
+        self.assertFalse(any(query.endswith(("_WARN", "_ERROR")) for query in queries))
 
 
 if __name__ == "__main__":

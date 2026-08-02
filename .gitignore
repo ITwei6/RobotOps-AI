@@ -12,3 +12,4 @@ storage/
 reference_projects/
 frontend/node_modules/
 frontend/dist/
+.robotops/

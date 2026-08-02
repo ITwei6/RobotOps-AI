@@ -373,7 +373,7 @@ ROBOTOPS_LLM_MODEL=deepseek-v4-pro
 - 设置当前 `agent_version`：
 
 ```text
-langgraph-diagnosis-v2
+langgraph-diagnosis-v3
 ```
 
 - 如果进入人工确认，`status` 仍可为 `TASK_STATUS_SUCCEEDED`，但 `confidence` 必须低，并在 `questions_for_human` 中说明需要补充的信息。
@@ -546,9 +546,21 @@ max_results
 
 ```text
 sources: list[SourceEvidence]
+source_sync: Git clone/pull/checkout 状态与 revision
+source_index: 索引 built/updated/reused/fallback 状态
 ```
 
-第一版优先检索本地 `../interaction`，后续再抽成 `source-index-service`。
+当前由 Agent 内置 revision 感知的 JSON 索引层：
+
+- C/C++ 和 Python 文件记录函数符号、调用关系、接口路径和结构摘要。
+- 每次搜索前先按平台注册配置同步仓库；远程 Git 缓存执行 `pull --ff-only`。
+- Git revision 变化时使用 `git diff --name-only` 增量重建变更文件。
+- revision 未变化时仍比较文件状态，识别本地修改、新增和删除。
+- 非 Git 目录生成 `workspace-*` 内容快照，并把该快照写入源码证据版本。
+- 符号/调用/接口命中优先使用索引；日志短语等未命中查询回退 `rg` 或标准库搜索。
+- 索引刷新失败只记录 `full_text_fallback`，不能中断诊断。
+
+索引当前是 Agent 内置能力，数据保存在 `.robotops/source-index`。后续多实例部署时再抽成 `source-index-service` 或共享索引服务。
 
 ### 7.3 `case_search`
 

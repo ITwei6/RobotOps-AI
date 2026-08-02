@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 7.5：Agent 模型驱动的迭代源码分析阶段
+阶段 7.6：Agent revision 感知的源码索引阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索采用通用流程：根据本次 Bug 和对应模块日志动态生成首轮查询，在平台注册的模块仓库中提取函数级上下文；随后由 `source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。模型候选查询必须通过模块白名单、源码原文、证据引用和重复查询校验，模型不可用时使用通用符号提取 fallback；流程不由 interaction 规则、T/Q 机型、固定函数或固定路径决定，并受独立源码分析轮次上限约束。React + TypeScript + Vite Web 工作台已通过 `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完成端到端联调；C++ proto 现已完整透传执行链、模块关系、Agent 版本和 DeepSeek/fallback 生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索采用通用流程：根据本次 Bug 和对应模块日志动态生成首轮查询，在平台注册的模块仓库中提取函数级上下文；随后由 `source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。`source_search` 现已使用 revision 感知的本地源码索引，记录 C/C++、Python 符号、调用关系、接口路径和文件摘要；远端仓库每次检索前 pull，revision 变化时根据 `git diff` 增量重建，同 revision 的本地修改也会失效旧索引。模型候选查询必须通过证据校验，流程不由固定函数或路径决定。React + TypeScript + Vite Web 工作台已通过完整链路联调；C++ proto 现已透传执行链、模块关系、Agent 版本和生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 
@@ -467,6 +467,8 @@ LangGraph / LangChain 使用原则：
 - 源码工具必须先按本次日志动态定位，再把命中函数或扩展文件上下文交给模型分析。
 - 模型规划的后续源码查询必须来自本轮真实源码并通过证据校验，不能直接执行模型自由生成的函数名或模块名。
 - 源码分析同时受 `ROBOTOPS_AGENT_MAX_SOURCE_ANALYSIS_ITERATIONS` 和全局工具轮次限制。
+- 源码索引必须绑定实际 Git revision 或 `workspace-*` 内容快照；仓库更新、本地修改、文件新增或删除后不得复用过期索引。
+- 索引检索失败时必须回退全文检索，不能因为索引损坏丢失源码取证能力。
 
 后续开发应优先把 interaction 真实 Bug 修复经验沉淀到 Agent 能力中，例如：
 

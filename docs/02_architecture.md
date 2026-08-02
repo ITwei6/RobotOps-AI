@@ -107,9 +107,15 @@ agent-service
 
 ### 4.3 source-repo indexer
 
-第一版不单独成服务，先由 Agent 调用 `ripgrep` 或文件检索完成源码定位。
+当前不单独成服务，由 Agent 内置索引器完成：
 
-后续可扩展为代码索引服务，支持 tree-sitter、clangd index、向量检索。
+- 平台按模块保存源码仓库地址，本地缺失时 clone，已有仓库在检索前 pull。
+- 为 C/C++ 和 Python 建立函数符号、调用关系、接口路径和文件摘要索引。
+- 索引绑定 Git revision；revision 更新时按 Git diff 增量刷新。
+- 非 Git 本地目录通过文件状态检测变更，并生成 `workspace-*` 内容快照。
+- 索引未命中或不可用时回退 `ripgrep`/文件搜索。
+
+后续可扩展为独立代码索引服务，支持 tree-sitter、clangd index、向量检索和多实例共享缓存。
 
 ## 5. 数据流
 

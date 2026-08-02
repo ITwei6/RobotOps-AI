@@ -43,7 +43,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         report = run_diagnosis_workflow(self.touch_payload)
 
         self.assertEqual(report["suspected_module"], "interaction")
-        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v2")
+        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v3")
         self.assertEqual(report["generation_mode"], "deterministic_fallback")
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertIn("T1 CheckTouch 前置检查拦截", report["execution_chain"])
@@ -254,7 +254,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         )
         report = run_diagnosis_workflow(payload)
 
-        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v2")
+        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v3")
         self.assertEqual(report["generation_mode"], "deepseek")
         self.assertIn("deepseek-v4-flash", report["generation_detail"])
         self.assertIn("LLM", report["summary"])
@@ -288,7 +288,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         report = run_diagnosis_workflow(self.touch_payload)
 
         self.assertEqual(report["suspected_module"], "interaction")
-        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v2")
+        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v3")
         self.assertEqual(report["generation_mode"], "llm_fallback")
         self.assertIn("deterministic report", report["generation_detail"])
         self.assertLessEqual(report["confidence"], 0.75)
@@ -393,7 +393,16 @@ class DiagnosisWorkflowTest(unittest.TestCase):
                         "return WorkerPool::Submit(request); }"
                     ),
                 }
-            return {"ok": True, "sources": [source]}
+            return {
+                "ok": True,
+                "sources": [source],
+                "source_index": {
+                    "ok": True,
+                    "enabled": True,
+                    "action": "reused",
+                    "search_strategy": "source_index",
+                },
+            }
 
         search_source.side_effect = source_result
         report = run_diagnosis_workflow(
@@ -428,6 +437,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
             {source["function_name"] for source in report["evidence_sources"]},
             {"Scheduler::HandleRequest", "WorkerPool::Submit", "TaskQueue::Enqueue"},
         )
+        self.assertIn("source index=source_index, refresh=reused", report["generation_detail"])
 
     @patch.dict(
         "os.environ",

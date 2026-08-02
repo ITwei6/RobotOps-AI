@@ -38,6 +38,7 @@ if ! curl -fsS http://127.0.0.1:9003/health >/dev/null 2>&1; then
   agent_env=(
     -e ROBOTOPS_LOG_SERVICE_URL=http://127.0.0.1:9001
     -e ROBOTOPS_SOURCE_SEARCH_ROOTS=/home/dev/workspace/interaction
+    -e ROBOTOPS_SOURCE_INDEX_ROOT=/home/dev/workspace/RobotOps-AI/.robotops/source-index
   )
   if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
     agent_env+=(

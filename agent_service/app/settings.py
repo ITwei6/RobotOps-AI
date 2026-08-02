@@ -15,6 +15,7 @@ class AgentSettings:
     tool_timeout_seconds: float
     source_search_roots: tuple[str, ...]
     source_workspace_root: str
+    source_index_root: str
     source_repository_file: str
     case_search_roots: tuple[str, ...]
     knowledge_search_roots: tuple[str, ...]
@@ -37,6 +38,7 @@ def load_settings() -> AgentSettings:
         tool_timeout_seconds=max(0.1, _float_env("ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS", 5.0)),
         source_search_roots=_source_roots_env(),
         source_workspace_root=os.getenv("ROBOTOPS_SOURCE_WORKSPACE_ROOT", ".robotops/source-cache"),
+        source_index_root=os.getenv("ROBOTOPS_SOURCE_INDEX_ROOT", ".robotops/source-index"),
         source_repository_file=os.getenv("ROBOTOPS_SOURCE_REPOSITORY_FILE", ".robotops/source-repositories.json"),
         case_search_roots=_case_roots_env(),
         knowledge_search_roots=_knowledge_roots_env(),

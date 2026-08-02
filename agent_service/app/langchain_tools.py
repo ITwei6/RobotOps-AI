@@ -50,6 +50,7 @@ def build_tool_registry(
     timeout_seconds: float,
     source_roots: Sequence[str],
     source_workspace_root: str,
+    source_index_root: str,
     source_repository_file: str,
     case_roots: Sequence[str],
     knowledge_roots: Sequence[str],
@@ -73,6 +74,7 @@ def build_tool_registry(
             timeout_seconds=timeout_seconds,
             args=args,
             workspace_root=source_workspace_root,
+            index_root=source_index_root,
             repositories=repositories,
         )
 

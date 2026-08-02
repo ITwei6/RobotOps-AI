@@ -1,11 +1,39 @@
 from __future__ import annotations
 
+import ast
 import re
 import shutil
 import subprocess
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
+
+from agent_service.app.source_index import (
+    refresh_source_index,
+    search_source_index,
+    source_file_summary,
+)
+
+
+SOURCE_SEARCH_SUFFIXES = {
+    ".c",
+    ".cc",
+    ".cpp",
+    ".cxx",
+    ".go",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hxx",
+    ".java",
+    ".js",
+    ".proto",
+    ".py",
+    ".rs",
+    ".sh",
+    ".ts",
+    ".tsx",
+}
 
 
 def search_source(
@@ -14,6 +42,7 @@ def search_source(
     timeout_seconds: float,
     args: Dict[str, Any],
     workspace_root: str = ".robotops/source-cache",
+    index_root: str = "",
     repositories: Dict[str, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     module_name = str(args.get("module_name") or args.get("main_module") or "").strip()
@@ -42,12 +71,52 @@ def search_source(
         return {"ok": False, "sources": [], "error": "source keywords are empty", "source_sync": sync_result}
 
     max_results = max(1, min(_int_value(args.get("max_results"), 10), 50))
+    source_index: Dict[str, Any] = {"ok": True, "enabled": False, "action": "disabled"}
+    index: Dict[str, Any] = {}
+    if index_root:
+        try:
+            index, source_index = refresh_source_index(
+                repository_root=search_root,
+                index_root=index_root,
+                revision=str(sync_result.get("revision") or ""),
+                file_indexer=_index_source_file,
+                timeout_seconds=timeout_seconds,
+            )
+        except Exception as exc:
+            source_index = {
+                "ok": False,
+                "enabled": True,
+                "action": "full_text_fallback",
+                "error": str(exc)[:300],
+            }
+
     evidence_branch = branch
-    evidence_commit = commit or str(sync_result.get("revision") or "")
+    base_revision = commit or str(sync_result.get("revision") or "")
+    workspace_revision = str(source_index.get("workspace_revision") or "")
+    if base_revision and sync_result.get("working_tree_dirty") and workspace_revision:
+        evidence_commit = f"{base_revision}+{workspace_revision}"
+    else:
+        evidence_commit = base_revision or workspace_revision
     sources: List[Dict[str, Any]] = []
     seen = set()
+    search_strategies: List[str] = []
     for keyword in keywords:
-        matches = _run_rg(search_root, keyword, max_results=max_results, timeout_seconds=timeout_seconds)
+        matches: List[Dict[str, Any]] = []
+        if index:
+            indexed_matches = search_source_index(index, keyword, max_results=max_results)
+            matches = [
+                {
+                    "path": search_root / str(match["path"]),
+                    "line_no": int(match["line_no"]),
+                    "content": "",
+                }
+                for match in indexed_matches
+            ]
+            if matches:
+                search_strategies.append("source_index")
+        if not matches:
+            matches = _run_rg(search_root, keyword, max_results=max_results, timeout_seconds=timeout_seconds)
+            search_strategies.append("full_text")
         for match in matches:
             context = _source_context(match["path"], int(match["line_no"]))
             key = (
@@ -69,9 +138,21 @@ def search_source(
                 }
             )
             if len(sources) >= max_results:
-                return {"ok": True, "sources": sources, "source_sync": sync_result}
+                source_index["search_strategy"] = "+".join(dict.fromkeys(search_strategies))
+                return {
+                    "ok": True,
+                    "sources": sources,
+                    "source_sync": sync_result,
+                    "source_index": source_index,
+                }
 
-    return {"ok": True, "sources": sources, "source_sync": sync_result}
+    source_index["search_strategy"] = "+".join(dict.fromkeys(search_strategies))
+    return {
+        "ok": True,
+        "sources": sources,
+        "source_sync": sync_result,
+        "source_index": source_index,
+    }
 
 
 def sync_source_repo(
@@ -91,7 +172,15 @@ def sync_source_repo(
         local_path = requested.resolve()
         if _is_git_repository(local_path, timeout_seconds):
             return _pull_existing_repo(local_path, branch, commit, timeout_seconds)
-        return {"ok": True, "action": "use_local", "local_path": str(local_path), "revision": ""}
+        return {
+            "ok": True,
+            "action": "use_local",
+            "local_path": str(local_path),
+            "revision": "",
+            "previous_revision": "",
+            "updated": False,
+            "working_tree_dirty": False,
+        }
 
     parsed = urlparse(repo)
     if parsed.scheme not in {"http", "https", "ssh", "git"} and not repo.endswith(".git"):
@@ -113,10 +202,19 @@ def sync_source_repo(
     checkout = _checkout_revision(target, commit, timeout_seconds)
     if not checkout["ok"]:
         return checkout
-    return {"ok": True, "action": "clone", "local_path": str(target), "revision": checkout["revision"]}
+    return {
+        "ok": True,
+        "action": "clone",
+        "local_path": str(target),
+        "revision": checkout["revision"],
+        "previous_revision": "",
+        "updated": True,
+        "working_tree_dirty": bool(checkout.get("working_tree_dirty")),
+    }
 
 
 def _pull_existing_repo(path: Path, branch: str, commit: str, timeout_seconds: float) -> Dict[str, Any]:
+    previous_revision = _current_revision(path, timeout_seconds)
     if branch:
         checkout_branch = _run_git(["git", "-C", str(path), "checkout", branch], timeout_seconds)
         if checkout_branch.returncode != 0:
@@ -127,7 +225,15 @@ def _pull_existing_repo(path: Path, branch: str, commit: str, timeout_seconds: f
     checkout = _checkout_revision(path, commit, timeout_seconds)
     if not checkout["ok"]:
         return checkout
-    return {"ok": True, "action": "pull", "local_path": str(path), "revision": checkout["revision"]}
+    return {
+        "ok": True,
+        "action": "pull",
+        "local_path": str(path),
+        "revision": checkout["revision"],
+        "previous_revision": previous_revision,
+        "updated": previous_revision != checkout["revision"],
+        "working_tree_dirty": bool(checkout.get("working_tree_dirty")),
+    }
 
 
 def _checkout_revision(path: Path, commit: str, timeout_seconds: float) -> Dict[str, Any]:
@@ -141,8 +247,19 @@ def _checkout_revision(path: Path, commit: str, timeout_seconds: float) -> Dict[
         "action": "checkout" if commit else "use_local",
         "local_path": str(path),
         "revision": revision.stdout.strip(),
+        "working_tree_dirty": _working_tree_dirty(path, timeout_seconds),
         "error": _git_error(revision) if revision.returncode != 0 else "",
     }
+
+
+def _current_revision(path: Path, timeout_seconds: float) -> str:
+    result = _run_git(["git", "-C", str(path), "rev-parse", "HEAD"], timeout_seconds)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _working_tree_dirty(path: Path, timeout_seconds: float) -> bool:
+    result = _run_git(["git", "-C", str(path), "status", "--porcelain"], timeout_seconds)
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 def _run_git(command: List[str], timeout_seconds: float) -> subprocess.CompletedProcess[str]:
@@ -212,9 +329,10 @@ def _run_rg(root: Path, keyword: str, *, max_results: int, timeout_seconds: floa
         "--no-heading",
         "-m",
         str(max_results),
-        keyword,
-        str(root),
     ]
+    for suffix in sorted(SOURCE_SEARCH_SUFFIXES):
+        command.extend(["--glob", f"*{suffix}"])
+    command.extend(["--glob", "CMakeLists.txt", keyword, str(root)])
     try:
         result = subprocess.run(
             command,
@@ -239,7 +357,7 @@ def _run_plain_text_search(root: Path, keyword: str, *, max_results: int) -> Lis
     for path in root.rglob("*"):
         if len(matches) >= max_results:
             break
-        if not path.is_file() or _skip_path(path):
+        if not path.is_file() or _skip_path(path) or not _is_source_search_path(path):
             continue
         try:
             with path.open("r", encoding="utf-8", errors="replace") as source:
@@ -258,6 +376,10 @@ def _skip_path(path: Path) -> bool:
     if any(part in ignored_parts for part in path.parts):
         return True
     return path.suffix.lower() in {".o", ".a", ".so", ".dll", ".exe", ".png", ".jpg", ".jpeg", ".zip", ".gz"}
+
+
+def _is_source_search_path(path: Path) -> bool:
+    return path.name == "CMakeLists.txt" or path.suffix.lower() in SOURCE_SEARCH_SUFFIXES
 
 
 def _parse_rg_line(line: str) -> Dict[str, Any] | None:
@@ -419,6 +541,8 @@ def _callable_name(signature: str) -> str:
     name = matches[-1].strip()
     if name in {"if", "for", "while", "switch", "catch"}:
         return ""
+    if name.upper() == name and "_" in name:
+        return ""
     return name
 
 
@@ -494,3 +618,174 @@ def _int_value(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _index_source_file(path: Path) -> Dict[str, Any]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    if path.suffix.lower() == ".py":
+        symbols, calls, interfaces = _index_python_source(text)
+    else:
+        symbols, calls, interfaces = _index_brace_source(lines)
+    return {
+        "summary": source_file_summary(
+            path,
+            (str(item.get("name") or "") for item in symbols),
+            (str(item.get("name") or "") for item in calls),
+        ),
+        "symbols": symbols,
+        "calls": calls,
+        "interfaces": interfaces,
+    }
+
+
+def _index_brace_source(
+    lines: List[str],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    masked = _mask_non_code(lines)
+    symbols: List[Dict[str, Any]] = []
+    calls: List[Dict[str, Any]] = []
+    interfaces: List[Dict[str, Any]] = []
+    seen_symbols = set()
+    seen_calls = set()
+    seen_interfaces = set()
+
+    for open_line, open_column, close_line in _brace_pairs(masked):
+        signature = _signature_before_brace(masked, open_line, open_column)
+        owner = _callable_name(signature)
+        if not owner or (owner, open_line) in seen_symbols:
+            continue
+        seen_symbols.add((owner, open_line))
+        symbols.append(
+            {
+                "name": owner,
+                "line_no": open_line + 1,
+                "end_line": close_line + 1,
+                "kind": "function",
+                "signature": signature[:500],
+            }
+        )
+
+        for line_index in range(open_line, min(close_line + 1, len(masked))):
+            for match in re.finditer(
+                r"(?<![A-Za-z0-9_])((?:[A-Za-z_]\w*(?:::|->|\.))*[A-Za-z_]\w*)\s*\(",
+                masked[line_index],
+            ):
+                name = _normalized_call_name(match.group(1))
+                if _skip_index_call(name, owner):
+                    continue
+                key = (owner, name, line_index)
+                if key in seen_calls:
+                    continue
+                seen_calls.add(key)
+                calls.append({"name": name, "owner": owner, "line_no": line_index + 1})
+
+            for value in re.findall(r"[\"'](/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)[\"']", lines[line_index]):
+                key = (owner, value, line_index)
+                if key in seen_interfaces:
+                    continue
+                seen_interfaces.add(key)
+                interfaces.append({"value": value, "owner": owner, "line_no": line_index + 1})
+
+    return symbols, calls, interfaces
+
+
+def _index_python_source(
+    text: str,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return [], [], []
+
+    symbols: List[Dict[str, Any]] = []
+    calls: List[Dict[str, Any]] = []
+    interfaces: List[Dict[str, Any]] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.classes: List[str] = []
+            self.functions: List[str] = []
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            self.classes.append(node.name)
+            self.generic_visit(node)
+            self.classes.pop()
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_function(node)
+
+        def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            prefix = self.classes + self.functions
+            name = ".".join(prefix + [node.name])
+            symbols.append(
+                {
+                    "name": name,
+                    "line_no": int(node.lineno),
+                    "end_line": int(getattr(node, "end_lineno", node.lineno)),
+                    "kind": "function",
+                    "signature": name,
+                }
+            )
+            self.functions.append(node.name)
+            self.generic_visit(node)
+            self.functions.pop()
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if self.functions:
+                name = _python_call_name(node.func)
+                if name:
+                    calls.append(
+                        {
+                            "name": name,
+                            "owner": ".".join(self.classes + self.functions),
+                            "line_no": int(node.lineno),
+                        }
+                    )
+            self.generic_visit(node)
+
+        def visit_Constant(self, node: ast.Constant) -> None:
+            if self.functions and isinstance(node.value, str) and re.fullmatch(
+                r"/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+",
+                node.value,
+            ):
+                interfaces.append(
+                    {
+                        "value": node.value,
+                        "owner": ".".join(self.classes + self.functions),
+                        "line_no": int(node.lineno),
+                    }
+                )
+
+    Visitor().visit(tree)
+    return symbols, calls, interfaces
+
+
+def _python_call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _python_call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    return ""
+
+
+def _normalized_call_name(value: str) -> str:
+    if "->" in value or "." in value:
+        return re.split(r"->|\.", value)[-1]
+    return value
+
+
+def _skip_index_call(name: str, owner: str) -> bool:
+    tail = name.rsplit("::", 1)[-1]
+    owner_tail = owner.rsplit("::", 1)[-1]
+    if tail == owner_tail:
+        return True
+    if tail in {"if", "for", "while", "switch", "catch", "sizeof", "decltype"}:
+        return True
+    upper = tail.upper()
+    log_suffixes = ("_TRACE", "_DEBUG", "_INFO", "_WARN", "_ERROR", "_FATAL", "_CRITICAL")
+    return upper == tail and ("LOG" in upper or upper.endswith(log_suffixes) or len(tail) <= 3)

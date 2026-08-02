@@ -2,6 +2,78 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-02 阶段 7.6：Agent revision 感知的源码索引
+
+修改内容：
+
+- 新增 `source_index.py`，在 Agent 内建立 revision 感知的 JSON 源码索引，不提前拆分独立服务。
+- 索引 C/C++ 和 Python 函数符号、函数调用、Topic/RPC 风格接口路径及文件结构摘要；查询精确符号、调用方或接口时优先使用索引。
+- 保留全文检索 fallback：索引未命中、构建失败或文件类型不进入索引时使用 `rg`，缺少 `rg` 时继续使用标准库文本搜索。
+- 远程 Git 仓库仍在每次源码搜索前 clone/pull；索引记录 Git revision，revision 变化时使用 `git diff --name-only` 只重建变化文件。
+- revision 不变时比较文件 `mtime/size`，识别本地未提交修改、新增和删除；非 Git 目录生成 `workspace-*` 内容快照并写入源码证据版本。
+- 增加索引 schema 版本、单文件大小保护、进程锁、跨进程文件锁和同目录原子替换；旧 schema 或损坏索引会安全重建。
+- LangChain `source_search` observation 增加 `source_index` 状态，记录 `built/updated/reused/full_text_fallback`、当前 revision、变化文件和实际检索策略。
+- 报告 `generation_detail` 增加源码索引策略和刷新状态，Agent 版本升级为 `langgraph-diagnosis-v3`。
+- 收紧通用源码取证噪声：全文 fallback 只扫描源码/接口文件，不把 Markdown 示例当源码；过滤日志级别宏，首轮最多返回 6 条、后续单轮最多返回 3 条源码证据。
+- `.robotops/` 加入 Git 忽略列表，开发启动脚本显式配置 `ROBOTOPS_SOURCE_INDEX_ROOT`。
+
+原因：
+
+- interaction、mc、hal、hds、sm、agent 等仓库会持续更新，不能建立一次索引后长期复用，也不能让诊断报告引用与实际源码不一致的旧 revision。
+- 多轮 Agent 调查重复执行全仓库文本扫描，在大仓库中效率和同名符号排序都不可控；函数定义和调用方应优先通过结构索引定位。
+- 索引属于加速层而不是唯一证据来源，任何索引失败都必须保留现有全文检索能力。
+
+影响范围：
+
+- `.gitignore`
+- `agent_service/app/source_index.py`
+- `agent_service/app/tools/source_tool.py`
+- `agent_service/app/langchain_tools.py`
+- `agent_service/app/settings.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/llm/source_planner.py`
+- `agent_service/tests/test_source_index.py`
+- `agent_service/tests/test_source_planner.py`
+- `agent_service/tests/test_workflow.py`
+- `scripts/run_dev_stack.sh`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `docs/02_architecture.md`
+- `docs/08_agent_service_focus.md`
+- `docs/10_langgraph_workflow_design.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先检查现有 `source_search`，确认同步逻辑已经在每次搜索前执行 Git pull，但检索仍完全依赖 `rg`，且非 Git 本地目录没有可追溯版本。
+- 首版索引采用标准库 JSON 和词法/AST 解析，避免当前阶段引入独立索引服务或把 interaction 函数写入索引逻辑。
+- 使用临时真实 Git bare remote 完成首次 clone；随后在远端提交新 revision，第二次搜索成功 pull，并只重建 `scheduler.cpp`。
+- 使用本地目录修改和删除测试验证：revision 为空时仍能刷新变化文件、删除失效记录，并更新 `workspace-*` 内容快照。
+- 在真实 interaction 目录建立索引，共识别 218 个源码文件；重复搜索动作为 `reused`，`coordinator_->GetChecker` 查询通过索引返回定义和调用方。
+- 第一次真实 DeepSeek 诊断虽然成功使用 v3 和索引，但 3 轮 fallback 收集了 21 条源码，其中包含 Markdown 示例和低信息量日志宏；据此限制全文搜索文件类型、过滤日志宏并收紧每轮结果上限。
+- 索引 API key 无关；DeepSeek API key 仍只存在于运行进程环境，未写入索引、代码、配置、测试、文档或 Git。
+
+验证结果：
+
+- Agent 全量测试：48 个测试全部通过。
+- `python3 -m compileall -q agent_service/app`：通过。
+- 源码索引定向测试覆盖 C++ 定义/调用方、Python 调用、Topic 路径、复用、增量更新、删除、真实 Git pull 和全文 fallback。
+- 真实 interaction 索引包含 218 个文件，重复查询为 `reused`，符号查询策略为 `source_index`，源码版本为 `workspace-22bb69174315d5f8`。
+- 收紧后同一 deterministic interaction 场景最多保留 12 条源码证据，不再把 Markdown 示例或日志宏作为源码函数。
+- 最终真实 DeepSeek `/diagnose` 返回 `langgraph-diagnosis-v3`、`generation_mode=deepseek`、`source planning=deepseek` 和置信度 0.92；8 条源码证据均来自源码文件并绑定 `workspace-22bb69174315d5f8`，索引状态为 `reused`。
+- `git diff --check` 和仓库敏感密钥模式检查通过。
+
+下一步：
+
+- 阶段 7.7 将源码调查轮次、查询原因、证据引用、仓库 revision 和索引状态结构化透传到 C++ 报告与 Web 源码证据视图。
+- 为 Web 增加源码函数上下文展开、命中位置、调用关系和本次使用版本展示。
+- 后续多实例部署时评估将本地索引抽成 `source-index-service`，并引入 tree-sitter/clangd 提升复杂 C++ 语义解析。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-08-02 阶段 7.5：Agent 模型驱动的迭代源码分析
 
 修改内容：
