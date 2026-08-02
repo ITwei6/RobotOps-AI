@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any, Dict, List
 
 from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structured_report
@@ -8,6 +9,7 @@ from agent_service.app.langchain_tools import build_tool_registry
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
+from agent_service.app.source_queries import build_source_queries
 from agent_service.app.tools import fetch_log_context, search_cases, search_knowledge, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
@@ -89,7 +91,11 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                         "module_name": module,
                         "branch": bug.get("branch", ""),
                         "commit": bug.get("commit", ""),
-                        "keywords": _keywords_from_logs(state.get("log_evidence") or []),
+                        "keywords": build_source_queries(
+                            bug=bug,
+                            logs=state.get("log_evidence") or [],
+                            module_name=module,
+                        ),
                         "max_results": 10,
                     },
                 }
@@ -490,8 +496,6 @@ def _next_source_modules(state: DiagnosisState) -> List[str]:
     primary = modules[0]
     if primary not in attempted:
         return [primary]
-    if not state.get("source_evidence"):
-        return []
     related = {
         str(relation.get("to_module") or "")
         for relation in state.get("module_relations") or []
@@ -509,37 +513,53 @@ def _derive_module_relations(
     primary = modules[0]
     logs = list(state.get("log_evidence") or []) + additional_logs
     sources = list(state.get("source_evidence") or []) + additional_sources
-    primary_text = "\n".join(
-        _log_search_text(log)
-        for log in logs
-        if str(log.get("module_name") or "") == primary
-    )
-    source_text = "\n".join(
-        str(source.get(key) or "")
+    primary_logs = [
+        log for log in logs if str(log.get("module_name") or "") == primary
+    ]
+    primary_sources = [
+        source
         for source in sources
-        if str(source.get("repo") or "") == primary or str(source.get("file_path") or "").startswith(primary + "/")
-        for key in ("file_path", "function_name", "matched_text", "snippet")
-    )
-    searchable = f"{primary_text}\n{source_text}".lower()
+        if str(source.get("repo") or "") == primary
+        or str(source.get("file_path") or "").startswith(primary + "/")
+    ]
     relations: List[Dict[str, Any]] = []
     for module in modules[1:]:
-        aliases = {module.lower(), module.lower().replace("_", "")}
-        matched_alias = next((alias for alias in aliases if alias and alias in searchable), "")
-        if not matched_alias:
-            continue
-        source_match = any(
-            matched_alias in " ".join(str(source.get(key) or "") for key in ("file_path", "function_name", "matched_text", "snippet")).lower()
-            for source in sources
-            if str(source.get("repo") or "") == primary or str(source.get("file_path") or "").startswith(primary + "/")
-        )
-        if source_match:
+        source_matches = [
+            source
+            for source in primary_sources
+            if _mentions_module(_source_search_text(source), module)
+        ]
+        log_matches = [
+            log
+            for log in primary_logs
+            if _mentions_module(_log_search_text(log), module)
+        ]
+        timeline = _nearest_module_log_relation(logs, primary, module)
+        correlation = _shared_log_correlation(logs, primary, module)
+        anomaly = _nearby_anomaly_relation(logs, primary, module)
+        if source_matches:
             evidence_type = "source"
-            refs = [str(source.get("file_path") or "") for source in sources if str(source.get("repo") or "") == primary or str(source.get("file_path") or "").startswith(primary + "/")]
+            refs = [str(source.get("file_path") or "") for source in source_matches]
             reason = f"{primary} 源码证据引用 {module} 模块"
-        else:
+        elif log_matches:
             evidence_type = "log"
-            refs = [f"{log.get('file_name', '')}:{log.get('line_no', 0)}" for log in logs if str(log.get("module_name") or "") == primary]
-            reason = f"{primary} 日志出现 {module} 关联关键词"
+            refs = [_log_ref(log) for log in log_matches]
+            reason = f"{primary} 日志出现 {module} 关联标识"
+        elif correlation:
+            evidence_type = "log"
+            refs = list(correlation["evidence_refs"])
+            reason = (
+                f"{primary} 与 {module} 日志共享关联标识 "
+                f"{correlation['correlation_key']}"
+            )
+            timeline = correlation
+        elif anomaly:
+            evidence_type = "log"
+            refs = list(anomaly["evidence_refs"])
+            reason = f"{module} 在主模块异常附近出现同时间窗口异常"
+            timeline = anomaly
+        else:
+            continue
         relations.append(
             {
                 "from_module": primary,
@@ -547,7 +567,7 @@ def _derive_module_relations(
                 "reason": reason,
                 "evidence_type": evidence_type,
                 "evidence_refs": list(dict.fromkeys(refs))[:10],
-                **_nearest_module_log_relation(logs, primary, module, aliases),
+                **timeline,
             }
         )
     return _unique_relations(relations)
@@ -557,13 +577,12 @@ def _nearest_module_log_relation(
     logs: List[Dict[str, Any]],
     primary: str,
     target: str,
-    aliases: set[str],
 ) -> Dict[str, Any]:
     primary_logs = [
         log
         for log in logs
         if str(log.get("module_name") or "") == primary
-        and any(alias in _log_search_text(log).lower() for alias in aliases if alias)
+        and _mentions_module(_log_search_text(log), target)
     ]
     target_logs = [log for log in logs if str(log.get("module_name") or "") == target]
     candidates = [
@@ -577,20 +596,182 @@ def _nearest_module_log_relation(
     _, primary_log, target_log = min(candidates, key=lambda item: item[0])
     return {
         "time_delta_ms": int(target_log.get("log_time") or 0) - int(primary_log.get("log_time") or 0),
-        "source_log_ref": f"{primary_log.get('file_name', '')}:{primary_log.get('line_no', 0)}",
-        "target_log_ref": f"{target_log.get('file_name', '')}:{target_log.get('line_no', 0)}",
+        "source_log_ref": _log_ref(primary_log),
+        "target_log_ref": _log_ref(target_log),
     }
+
+
+def _shared_log_correlation(
+    logs: List[Dict[str, Any]],
+    primary: str,
+    target: str,
+) -> Dict[str, Any]:
+    primary_logs = [log for log in logs if str(log.get("module_name") or "") == primary]
+    target_logs = [log for log in logs if str(log.get("module_name") or "") == target]
+    candidates = []
+    for primary_log in primary_logs:
+        primary_values = _correlation_values(primary_log)
+        if not primary_values:
+            continue
+        for target_log in target_logs:
+            shared = primary_values & _correlation_values(target_log)
+            if not shared:
+                continue
+            delta = _time_distance(primary_log, target_log)
+            if delta != 2**63 - 1 and delta > 60_000:
+                continue
+            candidates.append((delta, sorted(shared)[0], primary_log, target_log))
+    if not candidates:
+        return {}
+    _, key, primary_log, target_log = min(candidates, key=lambda item: item[0])
+    return {
+        "correlation_key": key,
+        "evidence_refs": [_log_ref(primary_log), _log_ref(target_log)],
+        "time_delta_ms": int(target_log.get("log_time") or 0) - int(primary_log.get("log_time") or 0),
+        "source_log_ref": _log_ref(primary_log),
+        "target_log_ref": _log_ref(target_log),
+    }
+
+
+def _nearby_anomaly_relation(
+    logs: List[Dict[str, Any]],
+    primary: str,
+    target: str,
+    *,
+    max_delta_ms: int = 5000,
+) -> Dict[str, Any]:
+    abnormal_levels = {"warn", "warning", "error", "fatal"}
+    primary_logs = [
+        log
+        for log in logs
+        if str(log.get("module_name") or "") == primary
+        and str(log.get("log_level") or "").casefold() in abnormal_levels
+    ]
+    target_logs = [
+        log
+        for log in logs
+        if str(log.get("module_name") or "") == target
+        and str(log.get("log_level") or "").casefold() in abnormal_levels
+    ]
+    candidates = [
+        (_time_distance(primary_log, target_log), primary_log, target_log)
+        for primary_log in primary_logs
+        for target_log in target_logs
+        if int(primary_log.get("log_time") or 0) > 0
+        and int(target_log.get("log_time") or 0) > 0
+    ]
+    if not candidates:
+        return {}
+    delta, primary_log, target_log = min(candidates, key=lambda item: item[0])
+    if delta > max_delta_ms:
+        return {}
+    return {
+        "evidence_refs": [_log_ref(primary_log), _log_ref(target_log)],
+        "time_delta_ms": int(target_log.get("log_time") or 0) - int(primary_log.get("log_time") or 0),
+        "source_log_ref": _log_ref(primary_log),
+        "target_log_ref": _log_ref(target_log),
+    }
+
+
+def _correlation_values(log: Dict[str, Any]) -> set[str]:
+    text = _log_search_text(log)
+    values: set[str] = set()
+    key_pattern = re.compile(
+        r"\b([A-Za-z_][\w.-]{0,63})\s*[:=]\s*"
+        r"([A-Za-z0-9_.:/-]{3,})",
+    )
+    for match in key_pattern.finditer(text):
+        if not _is_correlation_key(match.group(1)):
+            continue
+        value = match.group(2).strip(" ,;")
+        if value.casefold() not in {"none", "null", "true", "false", "unknown"}:
+            values.add(f"{match.group(1).casefold()}={value.casefold()}")
+            values.add(value.casefold())
+    for uuid in re.findall(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}\b", text):
+        values.add(uuid.casefold())
+    return values
+
+
+def _time_distance(first: Dict[str, Any], second: Dict[str, Any]) -> int:
+    first_time = int(first.get("log_time") or 0)
+    second_time = int(second.get("log_time") or 0)
+    if not first_time or not second_time:
+        return 2**63 - 1
+    return abs(second_time - first_time)
+
+
+def _log_ref(log: Dict[str, Any]) -> str:
+    return f"{log.get('file_name', '')}:{log.get('line_no', 0)}"
+
+
+def _source_search_text(source: Dict[str, Any]) -> str:
+    return " ".join(
+        str(source.get(key) or "")
+        for key in ("file_path", "function_name", "matched_text", "snippet")
+    )
+
+
+def _mentions_module(text: str, module: str) -> bool:
+    searchable = _identifier_words(text)
+    module_words = _identifier_words(module)
+    if not searchable or not module_words:
+        return False
+    padded = f" {searchable} "
+    if f" {module_words} " in padded:
+        return True
+    compact_module = module_words.replace(" ", "")
+    return compact_module in set(searchable.split())
+
+
+def _identifier_words(value: str) -> str:
+    text = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", value)
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
+    return re.sub(r"[^A-Za-z0-9]+", " ", text).strip().casefold()
+
+
+def _is_correlation_key(value: str) -> bool:
+    words = _identifier_words(value).split()
+    if not words:
+        return False
+    if words[-1] in {"id", "uuid", "token", "seq", "sequence"}:
+        return True
+    compact = "".join(words)
+    prefixes = {
+        "trace",
+        "span",
+        "request",
+        "req",
+        "task",
+        "action",
+        "session",
+        "transaction",
+        "command",
+        "cmd",
+    }
+    return any(compact == f"{prefix}id" for prefix in prefixes)
 
 
 def _unique_relations(relations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
     positions: Dict[tuple[str, str], int] = {}
     for relation in relations:
+        from_module = str(relation.get("from_module") or "").strip()
+        to_module = str(relation.get("to_module") or "").strip()
+        evidence_refs = [
+            str(value).strip()
+            for value in relation.get("evidence_refs") or []
+            if str(value).strip()
+        ]
+        if not from_module or not to_module or not evidence_refs:
+            continue
         key = (
-            str(relation.get("from_module") or ""),
-            str(relation.get("to_module") or ""),
+            from_module,
+            to_module,
         )
         current = dict(relation)
+        current["from_module"] = from_module
+        current["to_module"] = to_module
+        current["evidence_refs"] = evidence_refs[:10]
         if key not in positions:
             positions[key] = len(result)
             result.append(current)

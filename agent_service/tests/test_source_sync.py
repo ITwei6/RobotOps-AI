@@ -15,8 +15,12 @@ class SourceSyncTest(unittest.TestCase):
             (repo / "checker.cpp").write_text(
                 'bool T1Checker::CheckTouch() { return false; }\n', encoding="utf-8"
             )
-            completed = subprocess.CompletedProcess([], 0, "abc123\n", "")
-            with patch("agent_service.app.tools.source_tool._run_git", return_value=completed) as run_git:
+            def git_result(command, _timeout):
+                if command[-2:] == ["rev-parse", "--is-inside-work-tree"]:
+                    return subprocess.CompletedProcess(command, 0, "true\n", "")
+                return subprocess.CompletedProcess(command, 0, "abc123\n", "")
+
+            with patch("agent_service.app.tools.source_tool._run_git", side_effect=git_result) as run_git:
                 result = search_source(
                     roots=(tmpdir,),
                     timeout_seconds=2.0,
@@ -39,6 +43,24 @@ class SourceSyncTest(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("git", result["error"].lower())
+
+    def test_empty_git_marker_does_not_break_local_source_search(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "interaction"
+            (repo / ".git").mkdir(parents=True)
+            (repo / "checker.cpp").write_text(
+                'bool T1Checker::CheckTouch() { return false; }\n', encoding="utf-8"
+            )
+
+            result = search_source(
+                roots=(),
+                timeout_seconds=2.0,
+                args={"repo": str(repo), "keywords": ["CheckTouch"]},
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["source_sync"]["action"], "use_local")
+        self.assertEqual(result["sources"][0]["function_name"], "T1Checker::CheckTouch")
 
 
 if __name__ == "__main__":

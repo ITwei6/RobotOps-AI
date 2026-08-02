@@ -11,16 +11,18 @@
 - `langgraph-diagnosis-v1` 工作流骨架，内部按 `normalize_input -> rule_evidence -> planner -> tool_executor -> observation_analyzer -> report -> confidence_check -> finalize` 执行。
 - `log_context` 工具初版，调用 `log-service.GetLogContext` 获取发生时间窗口日志。
 - 当请求包含 `log_package_id` 时，`log_context` 以日志包为主键查询，不强制附带可能不一致的 bug_id。
-- `source_search` 工具初版，优先用 `rg` 检索本地 interaction 源码，缺少 `rg` 时使用标准库递归文本搜索兜底。
+- `source_search` 通用源码工具，按 `module_name` 使用平台注册仓库；优先用 `rg` 检索，缺少 `rg` 时使用标准库递归文本搜索兜底。
+- `source_queries.py` 从本次 Bug 和模块日志动态提取稳定短语、限定函数名、代码标识符与 Topic/路径，过滤运行时 ID 和数值，不使用规则提供的固定文件或函数。
+- 源码命中会提取 C/C++ 或 Python 所在函数上下文；函数过长时保留函数头、命中区和结尾，无法识别时返回小文件全文或大文件扩展窗口。
 - DeepSeek 结构化报告节点加固：`deepseek-v4-flash` 使用 `json_mode`，prompt 显式携带 `DiagnosisReport` JSON schema，结果必须通过 Pydantic 校验；成功时合并规则证据，失败时 fallback 到规则报告。
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，按 Bug 描述、T/Q 机型、模块和日志关键词匹配。
 - `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，返回带 `source` 的参考条目。
 - C++ `ticket-diagnosis-service.RunDiagnosis` 可通过 `log_package_id` 触发 Agent 自动调用 `log-service` 获取发生时间窗口日志。
 - 平台源码仓库注册表：管理员通过 `GET /source-repositories` 查看，`PUT /source-repositories/{module_name}` 配置 `repo_url`、默认 `branch`、可选 `commit` 和 `local_path`；诊断时按 `main_module` 自动取用。
 - `source_search` 支持源码工作区同步：远程 `source_repo` 未缓存时 clone，已有 Git 仓库先 `pull --ff-only`，可按 branch/commit 固定版本后再检索。
-- 本地 interaction 目录可以通过源码仓库注册表的 `local_path` 使用；检索结果会保留配置的 branch/commit，未指定 commit 时使用本地 Git 工作区同步返回的 revision。
+- 任意模块本地目录都可以通过源码仓库注册表的 `local_path` 使用；检索结果会保留配置的 branch/commit，未指定 commit 时使用本地 Git 工作区同步返回的 revision。无效空 `.git` 标记不会触发错误的 `git pull`。
 - `DiagnosisReport.execution_chain` 用于表达日志和规则支持的执行阶段；当前覆盖 `CheckTouch` 拦截链，不代表未观测到的后续阶段已被证明。
-- `DiagnosisReport.module_relations` 记录主模块到关联模块的关系、触发原因、证据类型和证据引用；只有该状态确认关联后，workflow 才继续检索关联模块源码。
+- `DiagnosisReport.module_relations` 记录主模块到关联模块的关系、触发原因、证据类型和证据引用；关系可由显式模块引用、共享 correlation ID 或异常时间近邻产生，只有确认关联后 workflow 才继续检索对应模块源码。
 - `DiagnosisReport.generation_mode` 明确区分 `deepseek`、`llm_fallback` 和 `deterministic_fallback`；`generation_detail` 只记录非敏感运行说明。
 - 如果双方日志存在有效 `log_time`，模块关系还会记录 `time_delta_ms`、`source_log_ref` 和 `target_log_ref`；源码证据会覆盖同一关系的早期日志提示，但保留时间线字段。
 
@@ -28,21 +30,29 @@
 
 ```text
 Bug 描述 / 机器人类型 / 主模块
-  + 日志证据
-  + 源码证据
+  + log_package_id
   ↓
-规则模板匹配
+按 occurred_time 获取多模块日志
   ↓
-结构化诊断报告
+按模块动态生成源码查询
+  ↓
+提取命中函数 / 文件上下文
+  ↓
+LangGraph 按证据关系继续检索关联模块
+  ↓
+DeepSeek 生成结构化报告
+  ↓
+证据校验 / 置信度校准 / fallback
 ```
 
-第一版不直接接大模型，避免证据不足时编造结论。未命中规则时会输出低置信度报告和需要人工确认的问题。
+DeepSeek 可用时负责阅读真实日志和源码上下文；规则模板只是补充先验及 deterministic fallback，不决定源码路径。DeepSeek 不可用、输出校验失败或证据不足时，工作流会降级并压低置信度。
 
 后续演进：
 
 - LangGraph 已编排 `planner -> tool_executor -> observation -> report` 循环；`tool_executor` 通过 `app/langchain_tools.py` 的 `StructuredTool` 执行日志、源码、案例和知识工具。
 - LangChain Tool 的输入校验和运行时异常会转换为 observation error；source tool 的 `source_sync` 状态会随 observation 保留，便于报告追溯源码版本。
-- 继续接入历史案例检索和知识库/RAG。
+- 增加基于首轮函数上下文中被调符号、RPC/Topic 的二次源码检索。
+- 将本地历史案例和知识检索扩展为 knowledge-service / RAG 索引。
 - RAG 是 Agent 的工具，不等于 Agent 本身。
 
 ## 配置
@@ -55,7 +65,7 @@ ROBOTOPS_SOURCE_REPOSITORY_FILE=.robotops/source-repositories.json
 ROBOTOPS_CASE_SEARCH_ROOTS=knowledge/cases:docs/cases
 ROBOTOPS_KNOWLEDGE_SEARCH_ROOTS=knowledge/articles:docs/knowledge
 ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS=5
-ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS=4
+ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS=8
 ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=120000
 ROBOTOPS_LLM_ENABLED=true
 ROBOTOPS_LLM_MODEL=deepseek-v4-flash

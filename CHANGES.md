@@ -2,6 +2,69 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-07-31 阶段 7.4：Agent 通用源码上下文诊断
+
+修改内容：
+
+- 撤销本轮曾尝试加入的 T/Q Checker 路径提示和规则驱动源码关键字，源码检索不再由 `CheckTouch`、机型或固定文件名决定。
+- 新增 `source_queries.py`，从本次 Bug 标题/描述和对应模块日志动态提取稳定短语、限定函数名、代码标识符、Topic/路径等查询，并去除 request_id、时间、数值等运行时动态值。
+- `source_search` 改为在平台注册的对应模块完整仓库内检索；远程仓库按原策略 clone/pull，本地目录存在无效空 `.git` 标记时安全按普通本地源码使用。
+- 源码命中从前后 3 行扩展为函数级上下文：支持 C/C++ 花括号函数和 Python 方法范围；函数过长时保留函数头、命中区和结尾，无法识别函数时对小文件返回整文件、对大文件返回扩展窗口。
+- 源码证据按“文件 + 所属函数”去重，修复控制语句内部调用被误识别为所属函数的问题。
+- 跨模块路由增加通用关系发现：支持主模块日志/源码显式引用、跨模块共享 correlation ID，以及 5 秒内异常日志近邻，不依赖固定的 interaction/mc/hal 模块表。
+- DeepSeek prompt 明确要求阅读源码控制流上下文，规则 baseline 只作为补充先验；模块关系必须使用规范字段并携带证据引用。
+- 报告合并阶段过滤缺少 `from_module`、`to_module` 或 `evidence_refs` 的模型关系，防止无证据的跨模块推测进入最终报告。
+
+原因：
+
+- 固定 `T1Checker::CheckTouch`、Q1 路径或 interaction 专用规则只能覆盖单个已知 Bug，无法适配后续任意模块和任意现象。
+- 通用 Agent 应根据每次 Bug 的真实时间窗口日志定位源码，再让大模型阅读命中位置的完整控制流；规则知识不能替代本次源码取证。
+- 仅提供命中行会丢失前置条件、分支和返回路径，容易让模型把日志文本匹配误判成真实根因。
+
+影响范围：
+
+- `agent_service/app/source_queries.py`
+- `agent_service/app/tools/source_tool.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/tests/test_source_queries.py`
+- `agent_service/tests/test_source_sync.py`
+- `agent_service/tests/test_tools.py`
+- `agent_service/tests/test_workflow.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `docs/08_agent_service_focus.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 首先复现真实 interaction 源码未进入报告的问题：配置根目录包含空 `.git` 目录，旧逻辑误执行 `git pull`；实际源码位于该目录下并可递归检索。
+- 初版曾按历史规则生成 T1/Q1 文件路径提示。根据“所有 Bug 走通用流程”的要求，立即撤销该实现，保留与业务无关的 Git 仓库有效性检查。
+- 使用不含 interaction 业务词的 `scheduler -> motor_bridge` 测试场景，验证 Agent 能通过共享 `command_id` 自动建立关系并依次检索两个模块。
+- 首轮真实源码检索发现普通枚举常量排序过高，会先命中无关函数；调整为稳定日志短语、限定函数名优先，普通字段和枚举降级。
+- 真实 Q1 源码检查发现 `if (StateManager::GetInstance()...)` 内部调用会被误认成函数名；修正控制语句范围识别，并按函数去重。
+- 首次 DeepSeek live 报告出现一条没有证据、字段不规范的模型关系；增加 prompt 约束和最终关系校验后复测通过。
+
+验证结果：
+
+- Agent 全量测试：36 个测试全部通过。
+- `python3 -m compileall -q agent_service/app`：通过。
+- 真实本地 interaction 检索首个证据为 `interaction/src/scheduler/checker/t1_checker.cpp` / `T1Checker::CheckTouch`，上下文为完整 19 行函数。
+- 最终 live 链路由 Agent 根据 `log_package_id` 调用 log-service、检索本地源码并调用 `deepseek-v4-flash`；返回 `generation_mode=deepseek`、置信度 0.92。
+- 最终报告的每条模块关系均包含规范的起止模块和非空证据引用，无证据模型关系已过滤。
+- DeepSeek API key 仅从旧 Agent 进程环境安全继承到新进程，未写入代码、配置、文档或 Git。
+
+下一步：
+
+- 增加由模型驱动的二次源码检索：根据首轮函数上下文中的被调函数、RPC/Topic 和接口类型生成下一轮查询，并继续受工具轮次与证据校验约束。
+- 为大仓库增加文件索引、符号索引和调用关系索引，避免只依赖全文搜索。
+- 在 Web 源码证据视图中增加函数上下文展开、命中行定位和模块仓库版本展示。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-07-31 阶段 7.3：诊断报告字段全链路透传
 
 修改内容：

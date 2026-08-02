@@ -21,7 +21,7 @@ def search_source(
     repo = str(repository.get("local_path") or repository.get("repo_url") or args.get("repo") or "")
     branch = str(args.get("branch") or repository.get("branch") or "")
     commit = str(args.get("commit") or repository.get("commit") or "")
-    existing_root = _resolve_search_root(repo, roots)
+    existing_root = _resolve_search_root(repo, roots, module_name)
     sync_repo = str(existing_root) if existing_root is not None else repo
     sync_result = sync_source_repo(
         repo=sync_repo,
@@ -46,24 +46,26 @@ def search_source(
     evidence_commit = commit or str(sync_result.get("revision") or "")
     sources: List[Dict[str, Any]] = []
     seen = set()
-
     for keyword in keywords:
         matches = _run_rg(search_root, keyword, max_results=max_results, timeout_seconds=timeout_seconds)
         for match in matches:
-            key = (str(match["path"]), int(match["line_no"]), keyword)
+            context = _source_context(match["path"], int(match["line_no"]))
+            key = (
+                str(match["path"]),
+                context["function_name"] or context["snippet"],
+            )
             if key in seen:
                 continue
             seen.add(key)
-            snippet = _snippet(match["path"], int(match["line_no"]))
             sources.append(
                 {
                     "repo": search_root.name,
                     "branch": evidence_branch,
                     "commit": evidence_commit,
                     "file_path": _display_path(search_root, match["path"]),
-                    "function_name": _function_name(match["path"], int(match["line_no"])),
+                    "function_name": context["function_name"],
                     "matched_text": keyword,
-                    "snippet": snippet,
+                    "snippet": context["snippet"],
                 }
             )
             if len(sources) >= max_results:
@@ -87,7 +89,7 @@ def sync_source_repo(
     requested = Path(repo).expanduser()
     if requested.exists() and requested.is_dir():
         local_path = requested.resolve()
-        if (local_path / ".git").exists():
+        if _is_git_repository(local_path, timeout_seconds):
             return _pull_existing_repo(local_path, branch, commit, timeout_seconds)
         return {"ok": True, "action": "use_local", "local_path": str(local_path), "revision": ""}
 
@@ -150,6 +152,11 @@ def _run_git(command: List[str], timeout_seconds: float) -> subprocess.Completed
         return subprocess.CompletedProcess(command, 1, "", str(exc))
 
 
+def _is_git_repository(path: Path, timeout_seconds: float) -> bool:
+    result = _run_git(["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"], timeout_seconds)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
 def _git_error(result: subprocess.CompletedProcess[str]) -> str:
     return (result.stderr or result.stdout or "git command failed").strip()[:512]
 
@@ -159,16 +166,19 @@ def _repo_name(repo: str) -> str:
     return name[:-4] if name.endswith(".git") else name
 
 
-def _resolve_search_root(repo: str, roots: Iterable[str]) -> Path | None:
+def _resolve_search_root(repo: str, roots: Iterable[str], module_name: str = "") -> Path | None:
     candidates: List[Path] = []
     if repo:
         candidates.append(Path(repo).expanduser())
-    repo_name = Path(repo).name if repo else ""
+    repo_name = _repo_name(repo) if repo else module_name
     for root in roots:
         path = Path(root).expanduser()
         if repo_name:
+            if path.name == repo_name:
+                candidates.append(path)
             candidates.append(path / repo_name)
-        candidates.append(path)
+        else:
+            candidates.append(path)
 
     for candidate in candidates:
         resolved = candidate.resolve()
@@ -194,7 +204,17 @@ def _run_rg(root: Path, keyword: str, *, max_results: int, timeout_seconds: floa
     if shutil.which("rg") is None:
         return _run_plain_text_search(root, keyword, max_results=max_results)
 
-    command = ["rg", "--line-number", "--fixed-strings", "--no-heading", "-m", str(max_results), keyword, str(root)]
+    command = [
+        "rg",
+        "--line-number",
+        "--with-filename",
+        "--fixed-strings",
+        "--no-heading",
+        "-m",
+        str(max_results),
+        keyword,
+        str(root),
+    ]
     try:
         result = subprocess.run(
             command,
@@ -260,52 +280,213 @@ def _display_path(root: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def _snippet(path: Path, line_no: int, context: int = 3) -> str:
+def _source_context(
+    path: Path,
+    line_no: int,
+    *,
+    max_lines: int = 160,
+    fallback_context: int = 24,
+) -> Dict[str, str]:
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return ""
-    start = max(1, line_no - context)
-    end = min(len(lines), line_no + context)
-    return "\n".join(f"{idx}: {lines[idx - 1]}" for idx in range(start, end + 1))
+        return {"function_name": "", "snippet": ""}
+    if not lines:
+        return {"function_name": "", "snippet": ""}
+
+    target = max(0, min(line_no - 1, len(lines) - 1))
+    scope = _python_function_scope(lines, target) if path.suffix.lower() == ".py" else None
+    if scope is None:
+        scope = _brace_function_scope(lines, target)
+
+    if scope is not None:
+        start, end, function_name = scope
+    elif len(lines) <= max_lines:
+        start, end, function_name = 0, len(lines) - 1, ""
+    else:
+        start = max(0, target - fallback_context)
+        end = min(len(lines) - 1, target + fallback_context)
+        function_name = ""
+
+    snippet = _format_context(lines, start, end, target, max_lines=max_lines)
+    return {"function_name": function_name, "snippet": snippet}
 
 
 def _function_name(path: Path, line_no: int) -> str:
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
+    return _source_context(path, line_no)["function_name"]
+
+
+def _brace_function_scope(lines: List[str], target: int) -> tuple[int, int, str] | None:
+    masked = _mask_non_code(lines)
+    pairs = _brace_pairs(masked)
+    candidates: List[tuple[int, int, str]] = []
+    for open_line, open_column, close_line in pairs:
+        if open_line <= target <= close_line:
+            signature = _signature_before_brace(masked, open_line, open_column)
+            function_name = _callable_name(signature)
+            if function_name:
+                candidates.append((open_line, close_line, function_name))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])
+
+
+def _mask_non_code(lines: List[str]) -> List[str]:
+    masked: List[str] = []
+    in_block_comment = False
+    for line in lines:
+        output = list(line)
+        index = 0
+        quote = ""
+        while index < len(line):
+            if in_block_comment:
+                end = line.find("*/", index)
+                if end < 0:
+                    for position in range(index, len(line)):
+                        output[position] = " "
+                    index = len(line)
+                    continue
+                for position in range(index, end + 2):
+                    output[position] = " "
+                in_block_comment = False
+                index = end + 2
+                continue
+
+            if quote:
+                output[index] = " "
+                if line[index] == "\\":
+                    if index + 1 < len(line):
+                        output[index + 1] = " "
+                    index += 2
+                    continue
+                if line[index] == quote:
+                    quote = ""
+                index += 1
+                continue
+
+            if line.startswith("//", index):
+                for position in range(index, len(line)):
+                    output[position] = " "
+                break
+            if line.startswith("/*", index):
+                output[index] = output[index + 1] = " "
+                in_block_comment = True
+                index += 2
+                continue
+            if line[index] in {'"', "'"}:
+                quote = line[index]
+                output[index] = " "
+            index += 1
+        masked.append("".join(output))
+    return masked
+
+
+def _brace_pairs(lines: List[str]) -> List[tuple[int, int, int]]:
+    stack: List[tuple[int, int]] = []
+    pairs: List[tuple[int, int, int]] = []
+    for line_index, line in enumerate(lines):
+        for column, character in enumerate(line):
+            if character == "{":
+                stack.append((line_index, column))
+            elif character == "}" and stack:
+                open_line, open_column = stack.pop()
+                pairs.append((open_line, open_column, line_index))
+    for open_line, open_column in stack:
+        pairs.append((open_line, open_column, len(lines) - 1))
+    return pairs
+
+
+def _signature_before_brace(lines: List[str], line_index: int, column: int) -> str:
+    start = max(0, line_index - 15)
+    prefix = "\n".join(lines[start:line_index] + [lines[line_index][:column]])
+    boundary = max(prefix.rfind(";"), prefix.rfind("}"), prefix.rfind("{"))
+    return re.sub(r"\s+", " ", prefix[boundary + 1 :]).strip()
+
+
+def _callable_name(signature: str) -> str:
+    if "(" not in signature or ")" not in signature:
         return ""
+    if re.match(r"^(?:if|for|while|switch|catch)\s*\(", signature):
+        return ""
+    matches = re.findall(
+        r"(?<![\w:])("
+        r"(?:[A-Za-z_]\w*::)*(?:~?[A-Za-z_]\w*|operator\s*[^\s(]+)"
+        r")\s*\(",
+        signature,
+    )
+    if not matches:
+        return ""
+    name = matches[-1].strip()
+    if name in {"if", "for", "while", "switch", "catch"}:
+        return ""
+    return name
 
-    # Prefer an actual qualified method definition. Calls inside the matched
-    # line, such as StateManager::GetInstance(), must not shadow the owner.
-    for idx in range(min(line_no - 1, len(lines) - 1), max(-1, line_no - 80), -1):
-        text = lines[idx].strip()
-        match = re.search(
-            r"\b([A-Za-z_]\w*(?:::[A-Za-z_]\w*)+)\s*\([^;]*\)\s*(?:const\s*)?\{",
-            text,
-        )
-        if match and not text.startswith(("if ", "for ", "while ", "switch ")):
-            return match.group(1)
 
-    signature = ""
-    for idx in range(min(line_no - 1, len(lines) - 1), max(-1, line_no - 80), -1):
-        text = lines[idx].strip()
-        if not text or text.startswith("//"):
+def _python_function_scope(lines: List[str], target: int) -> tuple[int, int, str] | None:
+    for start in range(target, -1, -1):
+        match = re.match(r"^(\s*)(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(", lines[start])
+        if not match:
             continue
-        signature = f"{text} {signature}".strip()
-        match = re.search(r"([A-Za-z_]\w*(?:::[A-Za-z_]\w*)+)\s*\(", signature)
-        if match:
-            return match.group(1)
-        match = re.search(r"\b([A-Za-z_]\w*)\s*\([^;]*\)\s*(?:const\s*)?\{?", signature)
-        if (
-            match
-            and "{" in signature
-            and "<<" not in signature
-            and not signature.startswith(("if ", "for ", "while ", "switch ", "return "))
-            and not re.fullmatch(r"[A-Z][A-Z0-9_]*", match.group(1))
-        ):
-            return match.group(1)
+        indent = len(match.group(1).expandtabs(4))
+        end = len(lines) - 1
+        for index in range(start + 1, len(lines)):
+            stripped = lines[index].strip()
+            if not stripped:
+                continue
+            indent_text = lines[index][: len(lines[index]) - len(lines[index].lstrip(" \t"))]
+            current_indent = len(indent_text.expandtabs(4))
+            if current_indent <= indent and not lines[index].lstrip().startswith("#"):
+                end = index - 1
+                break
+        if target > end:
+            continue
+        class_name = _enclosing_python_class(lines, start, indent)
+        function_name = f"{class_name}.{match.group(2)}" if class_name else match.group(2)
+        return start, end, function_name
+    return None
+
+
+def _enclosing_python_class(lines: List[str], function_start: int, function_indent: int) -> str:
+    for index in range(function_start - 1, -1, -1):
+        match = re.match(r"^(\s*)class\s+([A-Za-z_]\w*)", lines[index])
+        if not match:
+            continue
+        if len(match.group(1).expandtabs(4)) < function_indent:
+            return match.group(2)
     return ""
+
+
+def _format_context(
+    lines: List[str],
+    start: int,
+    end: int,
+    target: int,
+    *,
+    max_lines: int,
+) -> str:
+    total = end - start + 1
+    if total <= max_lines:
+        selected = list(range(start, end + 1))
+    else:
+        edge_size = min(12, max_lines // 6)
+        center_size = max_lines - edge_size * 2
+        center_start = max(start + edge_size, target - center_size // 2)
+        center_end = min(end - edge_size, center_start + center_size - 1)
+        center_start = max(start + edge_size, center_end - center_size + 1)
+        selected = sorted(
+            set(range(start, start + edge_size))
+            | set(range(center_start, center_end + 1))
+            | set(range(end - edge_size + 1, end + 1))
+        )
+
+    output: List[str] = []
+    previous = -1
+    for index in selected:
+        if previous >= 0 and index > previous + 1:
+            output.append(f"... lines {previous + 2}-{index} omitted ...")
+        output.append(f"{index + 1}: {lines[index]}")
+        previous = index
+    return "\n".join(output)
 
 
 def _int_value(value: Any, default: int) -> int:

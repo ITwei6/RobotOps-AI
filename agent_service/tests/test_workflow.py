@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from agent_service.app.llm.deepseek import DeepSeekUnavailable
 from agent_service.app.workflow import run_diagnosis_workflow
+from agent_service.app.workflow.nodes import _correlation_values, _mentions_module
 
 
 class DiagnosisWorkflowTest(unittest.TestCase):
@@ -34,7 +35,11 @@ class DiagnosisWorkflowTest(unittest.TestCase):
             ],
         }
 
-    def test_workflow_uses_rule_fallback_without_llm_key(self):
+    @patch(
+        "agent_service.app.workflow.nodes.search_source",
+        return_value={"ok": True, "sources": []},
+    )
+    def test_workflow_uses_rule_fallback_without_llm_key(self, search_source):
         report = run_diagnosis_workflow(self.touch_payload)
 
         self.assertEqual(report["suspected_module"], "interaction")
@@ -43,6 +48,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertIn("T1 CheckTouch 前置检查拦截", report["execution_chain"])
         self.assertEqual(report["evidence_sources"], [])
+        search_source.assert_called_once()
 
     def test_workflow_keeps_low_confidence_without_evidence(self):
         report = run_diagnosis_workflow(
@@ -60,6 +66,22 @@ class DiagnosisWorkflowTest(unittest.TestCase):
 
         self.assertLess(report["confidence"], 0.3)
         self.assertTrue(report["questions_for_human"])
+
+    def test_module_reference_matching_handles_short_and_compound_names(self):
+        self.assertTrue(_mentions_module("SetMcAction returned false", "mc"))
+        self.assertTrue(_mentions_module("HalCameraClient timeout", "hal_camera"))
+        self.assertFalse(_mentions_module("cmake configuration failed", "mc"))
+
+    def test_correlation_parser_ignores_non_identifier_state_fields(self):
+        values = _correlation_values(
+            {
+                "module_name": "scheduler",
+                "message": "invalid_state: blocked, command_id: cmd-8871",
+            }
+        )
+
+        self.assertIn("cmd-8871", values)
+        self.assertFalse(any("blocked" in value for value in values))
 
     @patch("agent_service.app.workflow.nodes.search_source")
     @patch("agent_service.app.workflow.nodes.fetch_log_context")
@@ -186,8 +208,16 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertEqual(report["module_relations"][0]["target_log_ref"], "mc.log:20")
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
+    @patch(
+        "agent_service.app.workflow.nodes.search_source",
+        return_value={"ok": True, "sources": []},
+    )
     @patch("agent_service.app.workflow.nodes.generate_structured_report")
-    def test_workflow_merges_llm_report_with_rule_evidence(self, generate_structured_report):
+    def test_workflow_merges_llm_report_with_rule_evidence(
+        self,
+        generate_structured_report,
+        search_source,
+    ):
         generate_structured_report.return_value = {
             "summary": "LLM 结合规则 baseline 判断为 interaction touch 前置检查拦截。",
             "suspected_module": "interaction",
@@ -197,6 +227,14 @@ class DiagnosisWorkflowTest(unittest.TestCase):
             "recommended_actions": ["LLM action"],
             "confidence": 0.91,
             "questions_for_human": [],
+            "module_relations": [
+                {
+                    "from": "agent",
+                    "to": "interaction",
+                    "description": "unsupported relation without evidence",
+                    "evidence_refs": [],
+                }
+            ],
             "agent_version": "llm-test",
             "status": "TASK_STATUS_SUCCEEDED",
         }
@@ -226,12 +264,25 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertGreaterEqual(report["confidence"], 0.85)
         self.assertEqual(report["module_relations"][0]["from_module"], "interaction")
         self.assertEqual(report["module_relations"][0]["to_module"], "mc")
+        self.assertEqual(len(report["module_relations"]), 1)
         self.assertEqual(report["module_relations"][0]["time_delta_ms"], 20)
         generate_structured_report.assert_called_once()
+        self.assertEqual(
+            {call.kwargs["args"]["module_name"] for call in search_source.call_args_list},
+            {"interaction", "mc"},
+        )
 
     @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
+    @patch(
+        "agent_service.app.workflow.nodes.search_source",
+        return_value={"ok": True, "sources": []},
+    )
     @patch("agent_service.app.workflow.nodes.generate_structured_report")
-    def test_workflow_falls_back_when_llm_fails(self, generate_structured_report):
+    def test_workflow_falls_back_when_llm_fails(
+        self,
+        generate_structured_report,
+        search_source,
+    ):
         generate_structured_report.side_effect = DeepSeekUnavailable("mock llm failure")
 
         report = run_diagnosis_workflow(self.touch_payload)
@@ -243,6 +294,72 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertLessEqual(report["confidence"], 0.75)
         self.assertEqual(report["evidence_sources"], [])
         generate_structured_report.assert_called_once()
+        search_source.assert_called_once()
+
+    @patch("agent_service.app.workflow.nodes.search_source")
+    def test_workflow_follows_generic_cross_module_correlation_id(self, search_source):
+        def source_result(*, args, **_kwargs):
+            module = args["module_name"]
+            return {
+                "ok": True,
+                "sources": [
+                    {
+                        "repo": module,
+                        "file_path": f"{module}/src/handler.cpp",
+                        "function_name": f"{module.title()}Handler::Run",
+                        "matched_text": args["keywords"][0],
+                        "snippet": f"bool {module.title()}Handler::Run() {{ return false; }}",
+                    }
+                ],
+            }
+
+        search_source.side_effect = source_result
+        report = run_diagnosis_workflow(
+            {
+                "bug": {
+                    "bug_id": "bug-generic-correlation",
+                    "title": "Command execution failed",
+                    "description": "A command crosses two modules and is rejected",
+                    "robot_type": "ROBOT_TYPE_T",
+                    "main_module": "scheduler",
+                    "occurred_time": 1785396730000,
+                },
+                "logs": [
+                    {
+                        "module_name": "scheduler",
+                        "file_name": "scheduler.log",
+                        "line_no": 11,
+                        "log_time": 1785396730010,
+                        "log_level": "ERROR",
+                        "message": "Dispatch command failed, command_id: cmd-8871",
+                    },
+                    {
+                        "module_name": "motor_bridge",
+                        "file_name": "motor_bridge.log",
+                        "line_no": 29,
+                        "log_time": 1785396730030,
+                        "log_level": "WARN",
+                        "message": "Command rejected, command_id: cmd-8871",
+                    },
+                ],
+            }
+        )
+
+        searched_modules = [
+            call.kwargs["args"]["module_name"]
+            for call in search_source.call_args_list
+        ]
+        self.assertEqual(searched_modules[:2], ["scheduler", "motor_bridge"])
+        self.assertFalse(
+            any("path_hints" in call.kwargs["args"] for call in search_source.call_args_list)
+        )
+        relation = next(
+            item
+            for item in report["module_relations"]
+            if item["to_module"] == "motor_bridge"
+        )
+        self.assertIn("关联标识", relation["reason"])
+        self.assertEqual(relation["time_delta_ms"], 20)
 
     @patch("agent_service.app.workflow.nodes.search_source", side_effect=RuntimeError("local source unavailable"))
     def test_workflow_keeps_running_when_langchain_tool_raises(self, search_source):

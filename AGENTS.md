@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 7.3：诊断报告字段全链路透传阶段
+阶段 7.4：Agent 通用源码上下文诊断阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 `DiagnosisReport` JSON schema 完成真实结构化报告调用，失败时仍安全 fallback。React + TypeScript + Vite Web 工作台已通过 `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完成端到端联调；C++ proto 现已完整透传执行链、模块关系、Agent 版本和 DeepSeek/fallback 生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 `DiagnosisReport` JSON schema 完成真实结构化报告调用，失败时仍安全 fallback。源码检索现已改为通用流程：根据本次 Bug 和对应模块日志动态生成查询，在平台注册的模块仓库中检索并提取函数级上下文，不由 interaction 规则、T/Q 机型、固定函数或固定路径决定；关联模块根据源码/日志引用、共享关联 ID 和异常时间近邻动态展开。React + TypeScript + Vite Web 工作台已通过 `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完成端到端联调；C++ proto 现已完整透传执行链、模块关系、Agent 版本和 DeepSeek/fallback 生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 
@@ -448,7 +448,7 @@ chore(scope): setup project skeleton
 ```text
 Bug 上下文解析
 日志证据提取
-interaction 源码检索
+主模块与关联模块通用源码上下文检索
 T/Q 机型规则理解
 历史案例检索
 知识库 / RAG
@@ -463,6 +463,8 @@ LangGraph / LangChain 使用原则：
 - LangChain 用于封装日志检索、源码检索、知识库/RAG、历史案例工具。
 - RAG 是 Agent 的工具，不等于 Agent 本身。
 - 没有日志或源码证据时，Agent 必须输出低置信度，不能编造结论。
+- interaction 规则和历史案例只能作为先验知识，不能向源码检索器固化函数名、文件名或路径。
+- 源码工具必须先按本次日志动态定位，再把命中函数或扩展文件上下文交给模型分析。
 
 后续开发应优先把 interaction 真实 Bug 修复经验沉淀到 Agent 能力中，例如：
 

@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 7.3：诊断报告字段全链路透传
+阶段 7.4：Agent 通用源码上下文诊断
 ```
 
 已完成：
@@ -327,7 +327,8 @@ CHANGES.md
 - `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
 - 已实际使用 LangGraph 编排 `normalize -> rule -> planner -> tool_executor -> observation -> report -> confidence -> finalize` 工作流。
 - 已实际使用 LangChain `StructuredTool` 和 Pydantic schema 包装日志、源码、案例、知识检索工具；DeepSeek 使用 `ChatDeepSeek.with_structured_output(DiagnosisReport, method="json_mode")`。
-- `agent-service` 已接入 `log_context` 和 `source_search` 工具初版，可通过工作流主动拉取 log-service 上下文并检索本地 interaction 源码。
+- `agent-service` 已接入 `log_context` 和通用 `source_search` 工具，可主动拉取多模块日志，并按模块检索平台注册的源码仓库。
+- 源码查询由本次 Bug 和日志动态生成，不使用固定函数或文件路径；命中后向 DeepSeek 提供函数级或扩展文件上下文。
 - `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 - C++ `DiagnosisReport` 已透传 `execution_chain`、`module_relations`、`agent_version`、`generation_mode` 和 `generation_detail`，Web 工作台直接展示真实 Agent 结果。
 
@@ -344,7 +345,7 @@ CHANGES.md
 后续开发重心：
 
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
-- Agent 侧重点建设日志证据提取、interaction 源码检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成。
+- Agent 侧重点建设日志证据提取、主模块及关联模块源码上下文检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成；interaction 是第一批重点知识，不是固化的唯一分析模块。
 - `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 120 秒，覆盖 DeepSeek 结构化报告的正常响应时间。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
@@ -352,14 +353,16 @@ CHANGES.md
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。
 - Agent 工具路由已记录失败工具的尝试状态，源码仓库未配置时不会重复消耗工具轮次，仍可继续检索历史案例和知识库。
 - 当前源码验证以本地 `interaction` 源码目录为准；远程 Git 仓库暂未提供，clone/pull live 验证延后。
-- 本阶段已验证本地 interaction 源码能返回真实文件路径、`T1Checker::CheckTouch` 函数名、匹配文本和代码片段。
+- 本阶段已验证本地 interaction 源码能返回真实文件路径、`T1Checker::CheckTouch` 函数名、匹配文本和完整 19 行函数上下文。
 - 源码证据会附带平台注册的本地 branch/commit；本地 Git 工作区同步返回的 revision 也会作为证据版本。
 - 诊断报告新增 `execution_chain`，当前已实现触摸事件进入 interaction、`CheckTouch` 拦截、未进入任务创建/派发阶段的执行链表达。
 - LangChain Tool 的输入校验、异常和源码同步状态会进入 LangGraph observation；单个模块工具失败不会中断整条诊断流程。
 - 报告新增 `module_relations`，记录主模块到关联模块的触发原因、证据类型和证据引用，关联模块检索由该状态驱动。
 - `module_relations` 进一步记录主模块日志与关联模块日志的时间差、双方文件和行号，用于判断跨模块调用顺序。
-- 日志上下文按发生时间窗口获取全部模块；源码先分析 `main_module`，发现主链路引用其他模块后，再按需检索 `mc`、`hal_*`、`hds`、`sm` 等模块源码。
+- 日志上下文按发生时间窗口获取全部模块；源码先分析 `main_module`，再根据模块引用、共享 correlation ID 或异常日志时间近邻按需检索关联模块，不写死 `mc`、`hal_*`、`hds`、`sm` 等名称。
 - Agent 的 `source_search` 会在远程 Git 仓库未缓存时 clone，已有 Git 工作区先 `pull --ff-only`，再按 branch/commit 搜索源码。
+- 规则模板只作为历史知识和无模型 fallback，不向源码工具注入 Checker、机型、函数名或文件路径；真实 `evidence_sources` 只能来自本次仓库检索结果。
+- DeepSeek 必须结合函数控制流分析命中位置；缺少起止模块或证据引用的模型关系会在报告合并时被丢弃。
 - 下一步将源码同步和三服务冒烟流程固化为 CI 或集成测试，并把本地知识索引替换或扩展为 knowledge-service/向量检索。
 - 测试人员输入保持聚焦于 Bug 现象、发生时间、机器人类型/模块和日志包；仓库更新由 Agent 根据平台注册表自动完成。
 - 日志上下文查询优先使用唯一 `log_package_id`，避免日志导入时的外部 bug_id 与平台新生成 Bug ID 不一致导致证据为空。
