@@ -29,7 +29,7 @@ ROBOTOPS_LOG_SERVICE_URL=http://127.0.0.1:19501 \
   ROBOTOPS_LLM_ENABLED=false \
   uvicorn agent_service.app.main:app --host 127.0.0.1 --port 19601
 ROBOTOPS_AGENT_SERVICE_URL=http://127.0.0.1:19601 \
-  ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=120000 \
+  ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=300000 \
   ROBOTOPS_TICKET_DIAGNOSIS_RPC_PORT=19502 \
   ./build/backend/services/ticket_diagnosis_service/ticket_diagnosis_service
 ```

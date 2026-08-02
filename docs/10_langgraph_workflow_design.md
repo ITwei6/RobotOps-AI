@@ -116,6 +116,13 @@ class DiagnosisPlan(TypedDict, total=False):
     tool_requests: List[ToolRequest]
 
 
+class SourceInvestigation(TypedDict, total=False):
+    queries: List[Dict[str, str]]
+    stop: bool
+    stop_reason: str
+    planning_mode: Literal["deepseek", "deterministic"]
+
+
 class DiagnosisState(TypedDict, total=False):
     request: Dict[str, Any]
     bug: Dict[str, Any]
@@ -132,10 +139,14 @@ class DiagnosisState(TypedDict, total=False):
     rule_report: Optional[Dict[str, Any]]
     report: Optional[Dict[str, Any]]
     plan: Optional[DiagnosisPlan]
+    source_investigation: Optional[SourceInvestigation]
 
     llm_enabled: bool
     tool_iteration: int
     max_tool_iterations: int
+    source_analysis_cursor: int
+    source_analysis_iteration: int
+    max_source_analysis_iterations: int
     confidence: float
     next_route: Literal["plan", "tools", "report", "human_review", "end"]
 ```
@@ -157,8 +168,12 @@ class DiagnosisState(TypedDict, total=False):
 | `rule_report` | `rule_evidence_node` | 报告生成、fallback | 覆盖 |
 | `report` | `llm_report_node`、`fallback_report_node`、`finalize_node` | 出口 | 覆盖 |
 | `plan` | `planner_node` | 路由、工具执行 | 覆盖 |
+| `source_investigation` | `source_analysis_node` | 规划、报告生成 | 覆盖 |
 | `llm_enabled` | `normalize_input_node` | 报告节点 | 覆盖 |
 | `tool_iteration` | `tool_executor_node` | 路由 | 覆盖 |
+| `source_analysis_cursor` | `source_analysis_node` | 源码分析 | 覆盖 |
+| `source_analysis_iteration` | `source_analysis_node` | 源码分析、报告元数据 | 覆盖 |
+| `max_source_analysis_iterations` | `normalize_input_node` | 源码分析 | 覆盖 |
 | `confidence` | 规则、报告、置信度节点 | 路由、出口 | 覆盖 |
 | `next_route` | 规划、置信度节点 | conditional edge | 覆盖 |
 
@@ -171,7 +186,8 @@ class DiagnosisState(TypedDict, total=False):
 - 接收 FastAPI 的 `DiagnoseRequest.model_dump()`。
 - 提取 `bug`、入口日志、入口源码、历史案例和知识库。
 - 设置 `llm_enabled`，只有存在 `DEEPSEEK_API_KEY` 且配置未关闭时为 true。
-- 设置 `max_tool_iterations`，第一版默认 2。
+- 设置 `max_tool_iterations`，当前默认 8。
+- 设置 `max_source_analysis_iterations`，当前默认 3。
 
 输出：
 
@@ -184,7 +200,10 @@ history_cases
 knowledge_items
 llm_enabled
 tool_iteration = 0
-max_tool_iterations = 2
+max_tool_iterations = 8
+source_analysis_cursor = 0
+source_analysis_iteration = 0
+max_source_analysis_iterations = 3
 trace
 ```
 
@@ -207,8 +226,8 @@ trace
 职责：
 
 - 根据 Bug、已有证据、规则报告和上一轮 observation 决定下一步。
-- 第一版先做 deterministic planner。
-- 后续可以改成 LangChain model planner，但必须输出 `DiagnosisPlan` schema。
+- 主取证路由使用 deterministic planner，保证没有模型时仍可运行。
+- 每轮源码证据的深入方向由 `source_analysis_node` 生成结构化计划。
 
 路由策略：
 
@@ -219,7 +238,7 @@ trace
 没有日志证据，且有 log_package_id
   -> collect_logs
 
-有 interaction 日志关键证据，但源码证据不足
+有主模块日志证据，但源码证据不足
   -> search_source
 
 有日志证据但规则置信度低
@@ -269,7 +288,25 @@ errors
 - Observation 不是最终结论。
 - LLM 不能直接把 observation 当事实扩写，必须引用证据字段。
 
-### 4.6 `llm_report_node`
+### 4.6 `source_analysis_node`
+
+职责：
+
+- 只分析从上次 cursor 之后新增且去重的源码证据。
+- 使用 DeepSeek `with_structured_output(..., method="json_mode")` 生成 `SourceInvestigationPlan`。
+- 要求每个候选查询包含目标模块、查询文本、原因和本轮源码证据引用。
+- 对候选执行模块白名单、源码原文、证据引用、重复查询和数量校验。
+- 模型不可用或候选全部未通过校验时，从真实源码片段通用提取被调符号作为 fallback。
+- 没有新源码、模型确认信息充分、达到源码分析轮次上限或达到全局工具上限时停止。
+
+安全边界：
+
+- 模型不能自由引入未注册、且没有源码关系证据的模块。
+- 查询文本必须实际出现在本轮源码上下文，不能执行模型臆造的函数名。
+- `source_investigation` 是取证计划元数据，不是最终报告的独立证据。
+- interaction 的 Checker、TaskFactory、WorkerManager 等经验不进入通用查询生成器。
+
+### 4.7 `llm_report_node`
 
 职责：
 
@@ -302,7 +339,7 @@ ROBOTOPS_LLM_MODEL=deepseek-v4-pro
 - LLM 调用失败：记录错误，使用 `rule_report`。
 - 结构化输出校验失败：记录错误，使用 `rule_report`。
 
-### 4.7 `fallback_report_node`
+### 4.8 `fallback_report_node`
 
 职责：
 
@@ -310,7 +347,7 @@ ROBOTOPS_LLM_MODEL=deepseek-v4-pro
 - 如果 `rule_report` 也不存在，生成低置信度报告。
 - 保证 `/diagnose` 永远返回合法 `DiagnosisReport`。
 
-### 4.8 `confidence_check_node`
+### 4.9 `confidence_check_node`
 
 职责：
 
@@ -328,22 +365,22 @@ ROBOTOPS_LLM_MODEL=deepseek-v4-pro
 | LLM 失败后 fallback | 0.75 |
 | 有日志证据、源码证据、规则命中且互相一致 | 0.92 |
 
-### 4.9 `finalize_node`
+### 4.10 `finalize_node`
 
 职责：
 
 - 输出最终 `DiagnosisReport`。
-- 设置 `agent_version`，第一版建议：
+- 设置当前 `agent_version`：
 
 ```text
-langgraph-diagnosis-v1
+langgraph-diagnosis-v2
 ```
 
 - 如果进入人工确认，`status` 仍可为 `TASK_STATUS_SUCCEEDED`，但 `confidence` 必须低，并在 `questions_for_human` 中说明需要补充的信息。
 
 ## 5. 图结构
 
-第一版图结构：
+当前图结构：
 
 ```mermaid
 flowchart TD
@@ -357,7 +394,8 @@ flowchart TD
     route_after_plan -->|human_review| fallback_report
 
     tool_executor --> observation_analyzer
-    observation_analyzer --> continue_or_report{next_route}
+    observation_analyzer --> source_analysis
+    source_analysis --> continue_or_report{next_route}
     continue_or_report -->|plan| planner
     continue_or_report -->|report| choose_report
     continue_or_report -->|human_review| fallback_report
@@ -386,6 +424,7 @@ def build_diagnosis_graph():
     builder.add_node("planner", planner_node)
     builder.add_node("tool_executor", tool_executor_node)
     builder.add_node("observation_analyzer", observation_analyzer_node)
+    builder.add_node("source_analysis", source_analysis_node)
     builder.add_node("choose_report", choose_report_node)
     builder.add_node("llm_report", llm_report_node)
     builder.add_node("fallback_report", fallback_report_node)
@@ -407,8 +446,9 @@ def build_diagnosis_graph():
     )
 
     builder.add_edge("tool_executor", "observation_analyzer")
+    builder.add_edge("observation_analyzer", "source_analysis")
     builder.add_conditional_edges(
-        "observation_analyzer",
+        "source_analysis",
         route_after_observation,
         {
             "plan": "planner",

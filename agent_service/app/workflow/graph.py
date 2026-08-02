@@ -18,6 +18,7 @@ from agent_service.app.workflow.nodes import (
     observation_analyzer_node,
     planner_node,
     rule_evidence_node,
+    source_analysis_node,
     tool_executor_node,
 )
 from agent_service.app.workflow.routing import (
@@ -39,6 +40,7 @@ def build_diagnosis_graph():
     builder.add_node("planner", planner_node)
     builder.add_node("tool_executor", tool_executor_node)
     builder.add_node("observation_analyzer", observation_analyzer_node)
+    builder.add_node("source_analysis", source_analysis_node)
     builder.add_node("choose_report", choose_report_node)
     builder.add_node("llm_report", llm_report_node)
     builder.add_node("fallback_report", fallback_report_node)
@@ -54,8 +56,9 @@ def build_diagnosis_graph():
         {"tools": "tool_executor", "report": "choose_report", "human_review": "fallback_report"},
     )
     builder.add_edge("tool_executor", "observation_analyzer")
+    builder.add_edge("observation_analyzer", "source_analysis")
     builder.add_conditional_edges(
-        "observation_analyzer",
+        "source_analysis",
         route_after_observation,
         {"plan": "planner", "report": "choose_report", "human_review": "fallback_report"},
     )
@@ -91,6 +94,7 @@ class _SequentialDiagnosisGraph:
                 break
             self._merge(state, tool_executor_node(state))
             self._merge(state, observation_analyzer_node(state))
+            self._merge(state, source_analysis_node(state))
             if route_after_observation(state) != "plan":
                 break
 

@@ -59,7 +59,7 @@ wait_for_service "agent-service" "http://127.0.0.1:9003/health"
 if ! curl -fsS http://127.0.0.1:9002/health >/dev/null 2>&1; then
   docker exec -d -w "${container_project}" \
     -e ROBOTOPS_AGENT_SERVICE_URL=http://127.0.0.1:9003 \
-    -e ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=120000 \
+    -e ROBOTOPS_AGENT_HTTP_TIMEOUT_MS=300000 \
     -e ROBOTOPS_TICKET_DIAGNOSIS_RPC_PORT=9002 \
     "${container_name}" \
     ./build/backend/services/ticket_diagnosis_service/ticket_diagnosis_service

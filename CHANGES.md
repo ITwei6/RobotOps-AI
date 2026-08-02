@@ -2,6 +2,74 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-02 阶段 7.5：Agent 模型驱动的迭代源码分析
+
+修改内容：
+
+- 新增 `source_planner.py`，定义 DeepSeek 结构化源码调查计划；模型根据当前真实源码上下文选择后续被调函数、RPC/Topic 或接口查询。
+- 增加计划落地校验：目标模块必须在当前模块或已由证据确认的关联模块中，查询文本必须存在于源码原文，`evidence_ref` 必须准确引用本轮证据，并过滤重复和超量查询。
+- 增加与业务无关的 deterministic fallback，从实际 C/C++ 或 Python 片段中提取后续调用符号；不使用 interaction 固定函数、文件名或 Bug 路径表。
+- LangGraph 增加 `source_analysis` 节点和源码分析状态，在 `observation_analyzer` 后执行“观察源码 -> 规划查询 -> 再检索”循环。
+- 新增 `ROBOTOPS_AGENT_MAX_SOURCE_ANALYSIS_ITERATIONS`，默认最多 3 轮源码深入分析；没有新证据、模型确认停止、全局工具次数耗尽或达到上限时进入报告阶段。
+- 源码证据跨轮次按仓库、文件和函数去重；只有源码实际提及平台注册模块时，才允许模型把查询扩展到该关联模块。
+- DeepSeek 最终报告增加源码规划模式、轮次和停止状态上下文，但明确这些规划信息不是独立证据。
+- Agent 版本升级为 `langgraph-diagnosis-v2`；C++ AgentClient 默认 HTTP 超时从 120 秒调整到 300 秒，覆盖多轮源码规划和最终结构化报告调用。
+
+原因：
+
+- 阶段 7.4 已能从 Bug 和日志定位首个源码函数，但只读首轮命中位置无法覆盖调用链更深处的条件检查、任务提交和模块接口实现。
+- 后续查询必须由本次源码证据驱动，同时防止模型臆造不存在的函数、模块或文件；因此模型规划和确定性证据校验必须分离。
+- 多轮 DeepSeek 调用会增加完整诊断耗时，原 120 秒 C++ HTTP 超时不足以稳定覆盖真实端到端链路。
+
+影响范围：
+
+- `agent_service/app/llm/source_planner.py`
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/app/settings.py`
+- `agent_service/app/workflow/graph.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/workflow/state.py`
+- `agent_service/tests/test_source_planner.py`
+- `agent_service/tests/test_workflow.py`
+- `backend/services/ticket_diagnosis_service/include/ticket_diagnosis_service/agent_client.h`
+- `backend/services/ticket_diagnosis_service/src/main.cc`
+- `scripts/run_dev_stack.sh`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `docs/08_agent_service_focus.md`
+- `docs/10_langgraph_workflow_design.md`
+- `docs/11_three_service_smoke_test.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先梳理现有 `planner -> source_search -> observation` 路由，确认新增节点应放在 observation 归一化之后，避免模型直接读取未经工具校验的数据。
+- 使用完全未知的 `scheduler` 测试仓库场景验证通用性：首轮命中 `Scheduler::HandleRequest` 后依次发现 `WorkerPool::Submit` 和 `Enqueue`，过程中没有任何 interaction 规则参与。
+- 使用模拟 DeepSeek 结构化计划验证模型查询只有在源码原文和证据引用一致时才执行；虚构模块、虚构查询和已执行查询均被过滤。
+- 增加独立迭代上限测试，确认源码中持续出现新调用时，配置为 1 轮只执行一次后续检索，不会继续追踪 `FinalStep`。
+- 首次真实端到端调用因多轮模型请求超过旧超时窗口，将 C++ AgentClient 默认值和开发启动脚本统一调整为 300 秒后重新联调。
+- DeepSeek API key 继续只从运行进程环境安全继承，未写入代码、配置、文档、测试或 Git。
+
+验证结果：
+
+- Agent 全量测试：42 个测试全部通过。
+- `python3 -m compileall -q agent_service/app`：通过。
+- `ticket_diagnosis_service` 在 `dev-env-service` 容器内编译通过。
+- 真实 Agent 调用返回 `agent_version=langgraph-diagnosis-v2`、`generation_mode=deepseek`、源码分析 2 轮、置信度 0.92，并根据首轮源码继续命中 `coordinator_->GetChecker` 相关实现。
+- `CreateBugTicket -> RunDiagnosis -> agent-service -> log-service` 完整链路成功，诊断任务状态为 `TASK_STATUS_SUCCEEDED`，返回 DeepSeek 报告、4 条源码证据和源码分析轮次元数据。
+- `git diff --check` 和仓库敏感密钥模式检查通过。
+
+下一步：
+
+- 阶段 7.6 建设源码符号索引、文件摘要和调用关系索引，减少大仓库反复全文检索并改善同名符号排序。
+- 为源码索引记录仓库 revision、生成时间和失效状态，在仓库 pull/checkout 后执行增量重建。
+- 在 Web 源码证据视图展示函数上下文、命中位置、仓库版本和经过校验的源码调查轨迹。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-07-31 阶段 7.4：Agent 通用源码上下文诊断
 
 修改内容：

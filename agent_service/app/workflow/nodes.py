@@ -5,14 +5,24 @@ import re
 from typing import Any, Dict, List
 
 from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structured_report
+from agent_service.app.llm.source_planner import (
+    SourcePlanningUnavailable,
+    build_deterministic_source_investigation,
+    generate_source_investigation,
+    ground_source_investigation,
+)
 from agent_service.app.langchain_tools import build_tool_registry
 from agent_service.app.models import DiagnosisReport
 from agent_service.app.rules import diagnose
 from agent_service.app.settings import load_settings
 from agent_service.app.source_queries import build_source_queries
+from agent_service.app.source_registry import load_repositories
 from agent_service.app.tools import fetch_log_context, search_cases, search_knowledge, search_source
 from agent_service.app.workflow.confidence import calibrate_report_confidence
 from agent_service.app.workflow.state import DiagnosisState, GraphTraceEvent, Hypothesis, ToolObservation, ToolRequest
+
+
+AGENT_VERSION = "langgraph-diagnosis-v2"
 
 
 def normalize_input_node(state: DiagnosisState) -> DiagnosisState:
@@ -29,6 +39,10 @@ def normalize_input_node(state: DiagnosisState) -> DiagnosisState:
         "llm_enabled": settings.llm_enabled,
         "tool_iteration": 0,
         "max_tool_iterations": settings.max_tool_iterations,
+        "source_analysis_cursor": 0,
+        "source_analysis_iteration": 0,
+        "max_source_analysis_iterations": settings.max_source_analysis_iterations,
+        "source_investigation": None,
         "confidence": 0.0,
         "next_route": "plan",
         "trace": [_trace("normalize_input", "ok", "normalized diagnose request")],
@@ -73,6 +87,26 @@ def planner_node(state: DiagnosisState) -> DiagnosisState:
                         "seconds_before": 300,
                         "seconds_after": 300,
                         "keywords": [],
+                    },
+                }
+            ],
+        )
+
+    followup = _next_source_followup(state)
+    if followup and _can_use_more_tools(state):
+        return _plan(
+            "search_source",
+            f"继续验证源码上下文中的调用符号 {followup['query']}。",
+            [
+                {
+                    "tool_name": "source_search",
+                    "reason": str(followup.get("reason") or "继续追踪源码调用链。"),
+                    "args": {
+                        "module_name": followup["module_name"],
+                        "branch": bug.get("branch", ""),
+                        "commit": bug.get("commit", ""),
+                        "keywords": [followup["query"]],
+                        "max_results": 8,
                     },
                 }
             ],
@@ -194,6 +228,99 @@ def observation_analyzer_node(state: DiagnosisState) -> DiagnosisState:
     }
 
 
+def source_analysis_node(state: DiagnosisState) -> DiagnosisState:
+    sources = _unique_sources(state.get("source_evidence") or [])
+    cursor = int(state.get("source_analysis_cursor") or 0)
+    if len(sources) <= cursor:
+        return {
+            "trace": [_trace("source_analysis", "skip", "no new source evidence")],
+        }
+
+    iteration = int(state.get("source_analysis_iteration") or 0)
+    max_iterations = int(state.get("max_source_analysis_iterations") or 0)
+    if iteration >= max_iterations:
+        return {
+            "source_analysis_cursor": len(sources),
+            "source_investigation": {
+                "queries": [],
+                "stop": True,
+                "stop_reason": "已达到源码分析最大轮次。",
+                "planning_mode": "deterministic",
+                "rejected_query_count": 0,
+            },
+            "trace": [_trace("source_analysis", "stop", "source analysis iteration limit reached")],
+        }
+
+    new_sources = sources[cursor:]
+    module_name = _latest_source_module(state) or str(state.get("bug", {}).get("main_module") or "")
+    registered_relations = _registered_source_relations(state, module_name, new_sources)
+    allowed_modules = _allowed_source_followup_modules(state, module_name, registered_relations)
+    attempted_queries = _attempted_source_queries(state)
+    settings = load_settings()
+    planning_mode = "deterministic"
+    fallback_reason = ""
+
+    if state.get("llm_enabled"):
+        try:
+            raw_plan = generate_source_investigation(
+                model=settings.llm_model,
+                bug=state.get("bug", {}),
+                logs=_unique_logs(state.get("log_evidence") or []),
+                sources=sources,
+                allowed_modules=allowed_modules,
+                attempted_queries=attempted_queries,
+            )
+            investigation = ground_source_investigation(
+                raw_plan,
+                sources=sources,
+                allowed_modules=allowed_modules,
+                attempted_queries=attempted_queries,
+            )
+            planning_mode = "deepseek"
+            if not investigation.get("stop") and not investigation.get("queries"):
+                fallback_reason = "DeepSeek queries did not pass evidence grounding"
+                investigation = build_deterministic_source_investigation(
+                    sources=new_sources,
+                    module_name=module_name,
+                    allowed_modules=allowed_modules,
+                    attempted_queries=attempted_queries,
+                )
+                planning_mode = "deterministic"
+        except (SourcePlanningUnavailable, TypeError, ValueError):
+            fallback_reason = "DeepSeek source planning unavailable"
+            investigation = build_deterministic_source_investigation(
+                sources=new_sources,
+                module_name=module_name,
+                allowed_modules=allowed_modules,
+                attempted_queries=attempted_queries,
+            )
+    else:
+        investigation = build_deterministic_source_investigation(
+            sources=new_sources,
+            module_name=module_name,
+            allowed_modules=allowed_modules,
+            attempted_queries=attempted_queries,
+        )
+
+    investigation["planning_mode"] = planning_mode
+    next_route = "plan" if investigation.get("queries") and _can_use_more_tools(state) else state.get("next_route", "report")
+    detail = (
+        f"mode={planning_mode}, queries={len(investigation.get('queries') or [])}, "
+        f"rejected={int(investigation.get('rejected_query_count') or 0)}, "
+        f"stop={bool(investigation.get('stop'))}"
+    )
+    if fallback_reason:
+        detail += f", fallback={fallback_reason}"
+    return {
+        "source_analysis_cursor": len(sources),
+        "source_analysis_iteration": iteration + 1,
+        "source_investigation": investigation,
+        "module_relations": registered_relations,
+        "next_route": next_route,
+        "trace": [_trace("source_analysis", "ok", detail)],
+    }
+
+
 def choose_report_node(state: DiagnosisState) -> DiagnosisState:
     detail = "llm report enabled" if state.get("llm_enabled") else "llm disabled, use fallback report"
     return {"next_route": "report", "trace": [_trace("choose_report", "ok", detail)]}
@@ -212,9 +339,12 @@ def llm_report_node(state: DiagnosisState) -> DiagnosisState:
         report["module_relations"] = _unique_relations(
             list(report.get("module_relations") or []) + list(state.get("module_relations") or [])
         )
-        report["agent_version"] = "langgraph-diagnosis-v1"
+        report["agent_version"] = AGENT_VERSION
         report["generation_mode"] = "deepseek"
-        report["generation_detail"] = f"structured report generated by {settings.llm_model}"
+        report["generation_detail"] = (
+            f"structured report generated by {settings.llm_model}; "
+            f"{_source_generation_detail(state)}"
+        )
         return {
             "report": DiagnosisReport(**report).model_dump(),
             "trace": [_trace("llm_report", "ok", f"generated report with {settings.llm_model}")],
@@ -232,17 +362,26 @@ def fallback_report_node(state: DiagnosisState) -> DiagnosisState:
     _merge_history_context(report, state.get("history_cases") or [])
     _merge_knowledge_context(report, state.get("knowledge_items") or [])
     report["module_relations"] = _unique_relations(state.get("module_relations") or [])
-    report["agent_version"] = "langgraph-diagnosis-v1"
+    report["agent_version"] = AGENT_VERSION
     llm_failed = any("llm_report failed" in str(error) for error in state.get("errors") or [])
     if llm_failed:
         report["generation_mode"] = "llm_fallback"
-        report["generation_detail"] = "DeepSeek failed validation or was unavailable; deterministic report used"
+        report["generation_detail"] = (
+            "DeepSeek failed validation or was unavailable; deterministic report used; "
+            f"{_source_generation_detail(state)}"
+        )
     elif state.get("llm_enabled"):
         report["generation_mode"] = "deterministic_fallback"
-        report["generation_detail"] = "LLM path was skipped because evidence collection required fallback"
+        report["generation_detail"] = (
+            "LLM path was skipped because evidence collection required fallback; "
+            f"{_source_generation_detail(state)}"
+        )
     else:
         report["generation_mode"] = "deterministic_fallback"
-        report["generation_detail"] = "DeepSeek disabled or API key unavailable"
+        report["generation_detail"] = (
+            "DeepSeek disabled or API key unavailable; "
+            f"{_source_generation_detail(state)}"
+        )
     return {
         "report": DiagnosisReport(**report).model_dump(),
         "trace": [_trace("fallback_report", "ok", "using rule baseline report")],
@@ -266,7 +405,7 @@ def confidence_check_node(state: DiagnosisState) -> DiagnosisState:
 
 def finalize_node(state: DiagnosisState) -> DiagnosisState:
     report = dict(state.get("report") or state.get("rule_report") or _empty_report(state))
-    report["agent_version"] = "langgraph-diagnosis-v1"
+    report["agent_version"] = AGENT_VERSION
     report.setdefault("status", "TASK_STATUS_SUCCEEDED")
     return {
         "report": DiagnosisReport(**report).model_dump(),
@@ -389,6 +528,8 @@ def _request_with_state_evidence(state: DiagnosisState) -> Dict[str, Any]:
     request["sources"] = _unique_sources(list(request.get("sources") or []) + list(state.get("source_evidence") or []))
     request["history_cases"] = list(request.get("history_cases") or []) + list(state.get("history_cases") or [])
     request["knowledge"] = list(request.get("knowledge") or []) + list(state.get("knowledge_items") or [])
+    if state.get("source_investigation"):
+        request["source_investigation"] = dict(state.get("source_investigation") or {})
     return request
 
 
@@ -432,7 +573,7 @@ def _empty_report(state: DiagnosisState) -> Dict[str, Any]:
             "飞书工单中的发生时间是否准确？",
             "日志包是否包含主模块及其关联模块的完整时间窗口日志？",
         ],
-        "agent_version": "langgraph-diagnosis-v1",
+        "agent_version": AGENT_VERSION,
         "status": "TASK_STATUS_SUCCEEDED",
     }
 
@@ -484,6 +625,101 @@ def _analysis_modules(bug: Dict[str, Any], logs: List[Dict[str, Any]]) -> List[s
         if module and module not in result:
             result.append(module)
     return result or ["unknown"]
+
+
+def _next_source_followup(state: DiagnosisState) -> Dict[str, Any] | None:
+    investigation = state.get("source_investigation") or {}
+    if investigation.get("stop"):
+        return None
+    attempted = {
+        (module.casefold(), query.casefold())
+        for module, query in _attempted_source_queries(state)
+    }
+    for item in investigation.get("queries") or []:
+        module = str(item.get("module_name") or "").strip()
+        query = str(item.get("query") or "").strip()
+        if module and query and (module.casefold(), query.casefold()) not in attempted:
+            return dict(item)
+    return None
+
+
+def _attempted_source_queries(state: DiagnosisState) -> List[tuple[str, str]]:
+    attempted: List[tuple[str, str]] = []
+    for observation in state.get("observations") or []:
+        if observation.get("tool_name") != "source_search":
+            continue
+        args = observation.get("args") or {}
+        module = str(args.get("module_name") or "").strip()
+        for value in args.get("keywords") or []:
+            query = str(value).strip()
+            if module and query and (module, query) not in attempted:
+                attempted.append((module, query))
+    return attempted
+
+
+def _latest_source_module(state: DiagnosisState) -> str:
+    for observation in reversed(state.get("observations") or []):
+        if observation.get("tool_name") != "source_search" or not observation.get("ok"):
+            continue
+        if not (observation.get("result") or {}).get("sources"):
+            continue
+        return str((observation.get("args") or {}).get("module_name") or "").strip()
+    return ""
+
+
+def _allowed_source_followup_modules(
+    state: DiagnosisState,
+    current_module: str,
+    additional_relations: List[Dict[str, Any]],
+) -> List[str]:
+    result = [current_module] if current_module else []
+    relations = list(state.get("module_relations") or []) + additional_relations
+    for relation in relations:
+        if str(relation.get("from_module") or "") != current_module:
+            continue
+        target = str(relation.get("to_module") or "").strip()
+        if target and target not in result:
+            result.append(target)
+    return result
+
+
+def _registered_source_relations(
+    state: DiagnosisState,
+    current_module: str,
+    sources: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    if not current_module or not sources:
+        return []
+    repositories = load_repositories(load_settings().source_repository_file)
+    existing = {
+        (
+            str(relation.get("from_module") or ""),
+            str(relation.get("to_module") or ""),
+        )
+        for relation in state.get("module_relations") or []
+    }
+    relations: List[Dict[str, Any]] = []
+    for target in repositories:
+        if target == current_module or (current_module, target) in existing:
+            continue
+        matched = [
+            source
+            for source in sources
+            if _mentions_module(_source_search_text(source), target)
+        ]
+        refs = [str(source.get("file_path") or "") for source in matched if source.get("file_path")]
+        if not refs:
+            continue
+        relations.append(
+            {
+                "from_module": current_module,
+                "to_module": target,
+                "reason": f"{current_module} 源码上下文引用已注册模块 {target}",
+                "evidence_type": "source",
+                "evidence_refs": list(dict.fromkeys(refs))[:10],
+            }
+        )
+    return _unique_relations(relations)
 
 
 def _next_source_modules(state: DiagnosisState) -> List[str]:
@@ -823,8 +1059,7 @@ def _unique_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         key = (
             str(source.get("repo", "")),
             str(source.get("file_path", "")),
-            str(source.get("function_name", "")),
-            str(source.get("matched_text", "")),
+            str(source.get("function_name") or source.get("snippet") or ""),
         )
         if key in seen:
             continue
@@ -841,6 +1076,14 @@ def _knowledge_items(values: List[Any]) -> List[Dict[str, Any]]:
         else:
             result.append({"content": str(value)})
     return result
+
+
+def _source_generation_detail(state: DiagnosisState) -> str:
+    investigation = state.get("source_investigation") or {}
+    mode = str(investigation.get("planning_mode") or "not_run")
+    rounds = int(state.get("source_analysis_iteration") or 0)
+    stop = bool(investigation.get("stop"))
+    return f"source planning={mode}, rounds={rounds}, stop={str(stop).lower()}"
 
 
 def _trace(node: str, event: str, detail: str) -> GraphTraceEvent:

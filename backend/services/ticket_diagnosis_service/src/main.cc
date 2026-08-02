@@ -49,7 +49,7 @@ int main() {
     robotops::ticket_diagnosis_service::TicketDiagnosisStore store;
     robotops::ticket_diagnosis_service::AgentClient agent_client(
         getenvStringOrDefault("ROBOTOPS_AGENT_SERVICE_URL", "http://127.0.0.1:9601"),
-        getenvIntOrDefault("ROBOTOPS_AGENT_HTTP_TIMEOUT_MS", 120000));
+        getenvIntOrDefault("ROBOTOPS_AGENT_HTTP_TIMEOUT_MS", 300000));
 
     const int port = getenvIntOrDefault("ROBOTOPS_TICKET_DIAGNOSIS_RPC_PORT", 9502);
     auto server = tewrpc::RpcServerFactory::create(

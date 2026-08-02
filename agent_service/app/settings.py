@@ -10,6 +10,7 @@ class AgentSettings:
     deepseek_api_key: str
     llm_model: str
     max_tool_iterations: int
+    max_source_analysis_iterations: int
     log_service_url: str
     tool_timeout_seconds: float
     source_search_roots: tuple[str, ...]
@@ -25,11 +26,13 @@ def load_settings() -> AgentSettings:
     # A time-window diagnosis may need log collection, primary-source search,
     # related-module searches, case retrieval, and knowledge retrieval.
     max_tool_iterations = _int_env("ROBOTOPS_AGENT_MAX_TOOL_ITERATIONS", 8)
+    max_source_analysis_iterations = _int_env("ROBOTOPS_AGENT_MAX_SOURCE_ANALYSIS_ITERATIONS", 3)
     return AgentSettings(
         llm_enabled=bool(api_key) and llm_flag not in {"0", "false", "no", "off"},
         deepseek_api_key=api_key,
         llm_model=os.getenv("ROBOTOPS_LLM_MODEL", "deepseek-v4-flash"),
         max_tool_iterations=max(0, max_tool_iterations),
+        max_source_analysis_iterations=max(0, max_source_analysis_iterations),
         log_service_url=os.getenv("ROBOTOPS_LOG_SERVICE_URL", "http://127.0.0.1:9501").rstrip("/"),
         tool_timeout_seconds=max(0.1, _float_env("ROBOTOPS_AGENT_TOOL_TIMEOUT_SECONDS", 5.0)),
         source_search_roots=_source_roots_env(),

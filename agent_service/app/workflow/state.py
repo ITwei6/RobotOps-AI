@@ -53,6 +53,16 @@ class DiagnosisPlan(TypedDict, total=False):
     tool_requests: List[ToolRequest]
 
 
+class SourceInvestigation(TypedDict, total=False):
+    findings: List[str]
+    unresolved_questions: List[str]
+    queries: List[Dict[str, Any]]
+    stop: bool
+    stop_reason: str
+    planning_mode: Literal["deepseek", "deterministic"]
+    rejected_query_count: int
+
+
 class DiagnosisState(TypedDict, total=False):
     request: Dict[str, Any]
     bug: Dict[str, Any]
@@ -70,9 +80,13 @@ class DiagnosisState(TypedDict, total=False):
     rule_report: Optional[Dict[str, Any]]
     report: Optional[Dict[str, Any]]
     plan: Optional[DiagnosisPlan]
+    source_investigation: Optional[SourceInvestigation]
 
     llm_enabled: bool
     tool_iteration: int
     max_tool_iterations: int
+    source_analysis_cursor: int
+    source_analysis_iteration: int
+    max_source_analysis_iterations: int
     confidence: float
     next_route: Literal["plan", "tools", "report", "human_review", "end"]

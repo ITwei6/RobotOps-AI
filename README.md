@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 7.4：Agent 通用源码上下文诊断
+阶段 7.5：Agent 模型驱动的迭代源码分析
 ```
 
 已完成：
@@ -325,10 +325,12 @@ CHANGES.md
 - `ticket-diagnosis-service` 初版：创建 Bug 单、创建诊断任务、保存和查询诊断报告。
 - `agent-service` 初版：FastAPI `/health` 和 `/diagnose`，基于 interaction 规则模板生成结构化诊断报告。
 - `ticket-diagnosis-service` 已支持 `RunDiagnosis`，可同步调用 `agent-service` 并保存诊断报告。
-- 已实际使用 LangGraph 编排 `normalize -> rule -> planner -> tool_executor -> observation -> report -> confidence -> finalize` 工作流。
+- 已实际使用 LangGraph 编排 `normalize -> rule -> planner -> tool_executor -> observation -> source_analysis -> report -> confidence -> finalize` 工作流。
 - 已实际使用 LangChain `StructuredTool` 和 Pydantic schema 包装日志、源码、案例、知识检索工具；DeepSeek 使用 `ChatDeepSeek.with_structured_output(DiagnosisReport, method="json_mode")`。
 - `agent-service` 已接入 `log_context` 和通用 `source_search` 工具，可主动拉取多模块日志，并按模块检索平台注册的源码仓库。
 - 源码查询由本次 Bug 和日志动态生成，不使用固定函数或文件路径；命中后向 DeepSeek 提供函数级或扩展文件上下文。
+- `source_analysis` 会让 DeepSeek 从本轮真实源码中规划后续查询；候选必须通过模块白名单、源码原文、证据引用和重复查询校验，模型不可用时通用提取被调符号继续分析。
+- 迭代源码分析在没有新证据、模型确认可停止或达到独立轮次上限时结束，不会无限调用工具。
 - `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 - C++ `DiagnosisReport` 已透传 `execution_chain`、`module_relations`、`agent_version`、`generation_mode` 和 `generation_detail`，Web 工作台直接展示真实 Agent 结果。
 
@@ -347,7 +349,8 @@ CHANGES.md
 - 优先增强 `agent-service`，而不是继续堆叠 C++ 后端服务。
 - Agent 侧重点建设日志证据提取、主模块及关联模块源码上下文检索、历史案例、知识库/RAG、LangGraph 诊断工作流和结构化报告生成；interaction 是第一批重点知识，不是固化的唯一分析模块。
 - `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
-- C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 120 秒，覆盖 DeepSeek 结构化报告的正常响应时间。
+- C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
+- 下一阶段优先建设源码符号、文件摘要和调用关系索引，提升大仓库检索的准确性与效率。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。

@@ -15,7 +15,7 @@ struct AgentDiagnosisResult {
 
 class AgentClient {
 public:
-    explicit AgentClient(std::string default_endpoint, int timeout_ms = 120000);
+    explicit AgentClient(std::string default_endpoint, int timeout_ms = 300000);
 
     AgentDiagnosisResult diagnose(
         const robotops::ticket_diagnosis::BugTicket& ticket,

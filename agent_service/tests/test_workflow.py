@@ -43,7 +43,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         report = run_diagnosis_workflow(self.touch_payload)
 
         self.assertEqual(report["suspected_module"], "interaction")
-        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
+        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v2")
         self.assertEqual(report["generation_mode"], "deterministic_fallback")
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertIn("T1 CheckTouch 前置检查拦截", report["execution_chain"])
@@ -254,7 +254,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         )
         report = run_diagnosis_workflow(payload)
 
-        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
+        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v2")
         self.assertEqual(report["generation_mode"], "deepseek")
         self.assertIn("deepseek-v4-flash", report["generation_detail"])
         self.assertIn("LLM", report["summary"])
@@ -288,7 +288,7 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         report = run_diagnosis_workflow(self.touch_payload)
 
         self.assertEqual(report["suspected_module"], "interaction")
-        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v1")
+        self.assertEqual(report["agent_version"], "langgraph-diagnosis-v2")
         self.assertEqual(report["generation_mode"], "llm_fallback")
         self.assertIn("deterministic report", report["generation_detail"])
         self.assertLessEqual(report["confidence"], 0.75)
@@ -360,6 +360,242 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         )
         self.assertIn("关联标识", relation["reason"])
         self.assertEqual(relation["time_delta_ms"], 20)
+
+    @patch("agent_service.app.workflow.nodes.search_source")
+    def test_workflow_iterates_unknown_source_chain_without_fixed_rules(self, search_source):
+        def source_result(*, args, **_kwargs):
+            query = args["keywords"][0]
+            if query == "WorkerPool::Submit":
+                source = {
+                    "repo": "scheduler",
+                    "file_path": "scheduler/src/worker_pool.cpp",
+                    "function_name": "WorkerPool::Submit",
+                    "matched_text": query,
+                    "snippet": "bool WorkerPool::Submit(Task task) { return queue_->Enqueue(task); }",
+                }
+            elif query == "Enqueue":
+                source = {
+                    "repo": "scheduler",
+                    "file_path": "scheduler/src/queue.cpp",
+                    "function_name": "TaskQueue::Enqueue",
+                    "matched_text": query,
+                    "snippet": "bool TaskQueue::Enqueue(Task task) { return task.ready; }",
+                }
+            else:
+                source = {
+                    "repo": "scheduler",
+                    "file_path": "scheduler/src/handler.cpp",
+                    "function_name": "Scheduler::HandleRequest",
+                    "matched_text": "dispatch pipeline failed",
+                    "snippet": (
+                        "bool Scheduler::HandleRequest(Request request) { "
+                        "if (!ValidateRequest(request)) { return false; } "
+                        "return WorkerPool::Submit(request); }"
+                    ),
+                }
+            return {"ok": True, "sources": [source]}
+
+        search_source.side_effect = source_result
+        report = run_diagnosis_workflow(
+            {
+                "bug": {
+                    "bug_id": "bug-unknown-source-chain",
+                    "title": "dispatch pipeline failed",
+                    "description": "A new scheduler bug without a predefined rule",
+                    "robot_type": "ROBOT_TYPE_T",
+                    "main_module": "scheduler",
+                    "occurred_time": 1785396730000,
+                },
+                "logs": [
+                    {
+                        "module_name": "scheduler",
+                        "file_name": "scheduler.log",
+                        "line_no": 8,
+                        "log_time": 1785396730010,
+                        "log_level": "ERROR",
+                        "message": "dispatch pipeline failed",
+                    }
+                ],
+            }
+        )
+
+        source_calls = search_source.call_args_list
+        self.assertEqual(len(source_calls), 3)
+        self.assertIn("dispatch pipeline failed", source_calls[0].kwargs["args"]["keywords"])
+        self.assertEqual(source_calls[1].kwargs["args"]["keywords"], ["WorkerPool::Submit"])
+        self.assertEqual(source_calls[2].kwargs["args"]["keywords"], ["Enqueue"])
+        self.assertEqual(
+            {source["function_name"] for source in report["evidence_sources"]},
+            {"Scheduler::HandleRequest", "WorkerPool::Submit", "TaskQueue::Enqueue"},
+        )
+
+    @patch.dict(
+        "os.environ",
+        {
+            "DEEPSEEK_API_KEY": "",
+            "ROBOTOPS_LLM_ENABLED": "false",
+            "ROBOTOPS_AGENT_MAX_SOURCE_ANALYSIS_ITERATIONS": "1",
+        },
+    )
+    @patch("agent_service.app.workflow.nodes.search_source")
+    def test_workflow_limits_iterative_source_analysis(self, search_source):
+        def source_result(*, args, **_kwargs):
+            query = args["keywords"][0]
+            if query == "NextStep":
+                source = {
+                    "repo": "scheduler",
+                    "file_path": "scheduler/src/next_step.cpp",
+                    "function_name": "NextStep",
+                    "matched_text": query,
+                    "snippet": "bool NextStep(Request request) { return FinalStep(request); }",
+                }
+            else:
+                source = {
+                    "repo": "scheduler",
+                    "file_path": "scheduler/src/handler.cpp",
+                    "function_name": "Scheduler::HandleRequest",
+                    "matched_text": "dispatch pipeline failed",
+                    "snippet": (
+                        "bool Scheduler::HandleRequest(Request request) { "
+                        "return NextStep(request); }"
+                    ),
+                }
+            return {"ok": True, "sources": [source]}
+
+        search_source.side_effect = source_result
+        report = run_diagnosis_workflow(
+            {
+                "bug": {
+                    "bug_id": "bug-source-limit",
+                    "title": "dispatch pipeline failed",
+                    "description": "A scheduler request stopped in a new pipeline",
+                    "robot_type": "ROBOT_TYPE_T",
+                    "main_module": "scheduler",
+                    "occurred_time": 1785396730000,
+                },
+                "logs": [
+                    {
+                        "module_name": "scheduler",
+                        "file_name": "scheduler.log",
+                        "line_no": 8,
+                        "log_time": 1785396730010,
+                        "log_level": "ERROR",
+                        "message": "dispatch pipeline failed",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(search_source.call_count, 2)
+        self.assertEqual(search_source.call_args_list[1].kwargs["args"]["keywords"], ["NextStep"])
+        attempted_queries = [
+            call.kwargs["args"]["keywords"][0] for call in search_source.call_args_list
+        ]
+        self.assertNotIn("FinalStep", attempted_queries)
+        self.assertEqual(
+            {source["function_name"] for source in report["evidence_sources"]},
+            {"Scheduler::HandleRequest", "NextStep"},
+        )
+
+    @patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-key", "ROBOTOPS_LLM_ENABLED": "true"})
+    @patch("agent_service.app.workflow.nodes.generate_structured_report")
+    @patch("agent_service.app.workflow.nodes.generate_source_investigation")
+    @patch("agent_service.app.workflow.nodes.search_source")
+    def test_workflow_consumes_deepseek_source_plan_until_stop(
+        self,
+        search_source,
+        generate_source_investigation,
+        generate_structured_report,
+    ):
+        def source_result(*, args, **_kwargs):
+            query = args["keywords"][0]
+            if query == "ValidateRequest":
+                return {
+                    "ok": True,
+                    "sources": [
+                        {
+                            "repo": "scheduler",
+                            "file_path": "scheduler/src/validator.cpp",
+                            "function_name": "ValidateRequest",
+                            "matched_text": query,
+                            "snippet": "bool ValidateRequest(Request request) { return request.valid(); }",
+                        }
+                    ],
+                }
+            return {
+                "ok": True,
+                "sources": [
+                    {
+                        "repo": "scheduler",
+                        "file_path": "scheduler/src/handler.cpp",
+                        "function_name": "Scheduler::HandleRequest",
+                        "matched_text": "dispatch failed",
+                        "snippet": "bool Scheduler::HandleRequest(Request request) { return ValidateRequest(request); }",
+                    }
+                ],
+            }
+
+        search_source.side_effect = source_result
+        generate_source_investigation.side_effect = [
+            {
+                "queries": [
+                    {
+                        "module_name": "scheduler",
+                        "query": "ValidateRequest",
+                        "reason": "Verify the called validation branch.",
+                        "evidence_ref": "scheduler/src/handler.cpp:Scheduler::HandleRequest",
+                    }
+                ],
+                "stop": False,
+            },
+            {
+                "queries": [],
+                "stop": True,
+                "stop_reason": "Validation implementation is now available.",
+            },
+        ]
+        generate_structured_report.return_value = {
+            "summary": "Validation source was inspected.",
+            "suspected_module": "scheduler",
+            "possible_causes": ["The validation branch rejects the request."],
+            "evidence_logs": [],
+            "evidence_sources": [],
+            "recommended_actions": ["Check request validity fields."],
+            "confidence": 0.8,
+            "questions_for_human": [],
+        }
+
+        report = run_diagnosis_workflow(
+            {
+                "bug": {
+                    "bug_id": "bug-deepseek-source-plan",
+                    "title": "dispatch failed",
+                    "description": "A scheduler request is rejected",
+                    "robot_type": "ROBOT_TYPE_T",
+                    "main_module": "scheduler",
+                    "occurred_time": 1785396730000,
+                },
+                "logs": [
+                    {
+                        "module_name": "scheduler",
+                        "file_name": "scheduler.log",
+                        "line_no": 3,
+                        "log_time": 1785396730010,
+                        "log_level": "ERROR",
+                        "message": "dispatch failed",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(search_source.call_count, 2)
+        self.assertEqual(generate_source_investigation.call_count, 2)
+        self.assertEqual(search_source.call_args_list[1].kwargs["args"]["keywords"], ["ValidateRequest"])
+        self.assertEqual(report["generation_mode"], "deepseek")
+        self.assertEqual(
+            {source["function_name"] for source in report["evidence_sources"]},
+            {"Scheduler::HandleRequest", "ValidateRequest"},
+        )
 
     @patch("agent_service.app.workflow.nodes.search_source", side_effect=RuntimeError("local source unavailable"))
     def test_workflow_keeps_running_when_langchain_tool_raises(self, search_source):
