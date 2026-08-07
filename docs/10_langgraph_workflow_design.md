@@ -61,6 +61,8 @@ diagnostic_trace
 status
 ```
 
+`trace_id` 和 `diagnostic_trace` 由 Agent 返回后继续透传到 C++ `DiagnosisReport` 和 Web 诊断报告。公开轨迹只用于运行状态和证据链复核，不包含模型隐藏推理、完整 prompt 或敏感凭据。
+
 内部从直接调用 `rules.diagnose()` 演进为：
 
 ```text

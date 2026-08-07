@@ -2,6 +2,52 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-07 阶段 7.8：Agent 诊断轨迹贯通 C++ 与 Web
+
+修改内容：
+
+- `ticket_diagnosis.proto` 新增 `DiagnosisTraceEvent`，`DiagnosisReport` 新增 `trace_id` 和 `diagnostic_trace` 字段。
+- `ticket-diagnosis-service` 的 AgentClient 透传 Agent 返回的 trace ID 和公开诊断节点轨迹，兼容没有轨迹的旧报告。
+- Web 诊断报告新增 Agent 执行轨迹、生成版本、源码版本和 trace ID 展示；源码证据展示 branch/commit，重复文件函数证据使用稳定复合 key。
+- 前端补充空轨迹、无源码版本和低置信度报告的可视化状态，不展示模型隐藏推理。
+
+原因：
+
+- Agent 的 LangGraph 工作流已经返回可公开的运行元数据，但此前 C++ 和 Web 只展示最终报告，无法复核本次诊断经过了哪些节点、使用了哪个源码版本。
+- 简历项目需要体现 Agent 工作流的可观测性和证据链，而不是只展示一次模型调用结果。
+
+影响范围：
+
+- `proto/ticket_diagnosis.proto`
+- `backend/services/ticket_diagnosis_service/src/agent_client.cc`
+- `frontend/src/App.tsx`
+- `frontend/src/styles.css`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先复用 Agent 已有的安全 `trace_id` 和 `diagnostic_trace`，没有重新暴露 prompt 或隐藏推理。
+- 前端首次构建发现本机缺少 Rollup Linux 可选依赖，执行 `npm install` 补齐依赖后重新构建成功。
+- C++ 在 `dev-env-service` 容器内重新生成 protobuf 并编译 `ticket_diagnosis_service`，确认新增字段可被服务消费。
+- 容器内完成 Agent 单测、编译检查和离线评测；live `/diagnose` 也确认返回 DeepSeek 轨迹。
+
+验证结果：
+
+- Agent 单测：50/50 通过。
+- Agent 离线评测：3/3 通过，模块识别率、源码命中率、证据完整性、轨迹完整性和 trace ID 覆盖率均为 1.0。
+- 前端：`npm run build` 通过。
+- C++：Docker `dev-env-service` 内 `cmake --build build --target ticket_diagnosis_service -j1` 通过。
+- live Agent：`/health` 正常，`/diagnose` 返回 `generation_mode=deepseek`、trace ID 和节点轨迹。
+
+下一步：
+
+- 扩充真实脱敏 Bug 评测集，增加 DeepSeek 与 deterministic fallback 的对比指标。
+- 将源码调查查询、日志检索结果和人工反馈沉淀为可复核的诊断证据详情。
+
+是否已提交 Git：
+
+- 待本阶段验证完成后提交。
+
 ## 2026-08-07 阶段 7.7：Agent 可观测性与离线评测
 
 修改内容：

@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 7.7：Agent 可观测性与离线评测
+阶段 7.8：Agent 诊断轨迹贯通 C++ 与 Web
 ```
 
 已完成：
@@ -338,6 +338,7 @@ CHANGES.md
 - 已加入跨模块离线评测集和 `scripts/evaluate_agent.py`，统计模块识别率、源码命中率、证据完整性、轨迹完整性、置信度等指标。
 - `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 - C++ `DiagnosisReport` 已透传 `execution_chain`、`module_relations`、`agent_version`、`generation_mode` 和 `generation_detail`，Web 工作台直接展示真实 Agent 结果。
+- C++ `DiagnosisReport` 已透传 Agent `trace_id` 和公开 `diagnostic_trace`；Web 诊断报告展示工作流节点、源码 branch/commit 和生成元数据。
 
 当前限制：
 
@@ -356,7 +357,7 @@ CHANGES.md
 - `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
 - Agent 当前版本为 `langgraph-diagnosis-v3`，`generation_detail` 会记录源码索引检索策略和本次构建、更新或复用状态。
-- 下一阶段优先把 `diagnostic_trace`、源码调查原因、仓库 revision 和索引状态展示到 Web 证据视图，并扩充真实脱敏 Bug 评测集。
+- 下一阶段优先扩充真实脱敏 Bug 评测集，比较 DeepSeek 与 deterministic fallback，并沉淀源码调查查询和人工反馈。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。

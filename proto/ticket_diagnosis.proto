@@ -66,6 +66,12 @@ message DiagnosisModuleRelation {
   string target_log_ref = 8;
 }
 
+message DiagnosisTraceEvent {
+  string node = 1;
+  string event = 2;
+  string detail = 3;
+}
+
 message DiagnosisReport {
   string report_id = 1;
   string task_id = 2;
@@ -86,6 +92,8 @@ message DiagnosisReport {
   string agent_version = 17;
   string generation_mode = 18;
   string generation_detail = 19;
+  string trace_id = 20;
+  repeated DiagnosisTraceEvent diagnostic_trace = 21;
 }
 
 message CreateBugTicketRequest {

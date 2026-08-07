@@ -21,6 +21,7 @@
 - DeepSeek 规划不可用或候选查询未通过校验时，Agent 从当前源码片段通用提取被调符号作为 deterministic fallback；两种模式都不依赖固定业务函数或文件路径。
 - 源码分析使用独立迭代上限，达到上限、没有新证据或模型确认信息充分时停止并进入报告阶段。
 - `/diagnose` 返回 `trace_id` 和 `diagnostic_trace`，只记录公开运行元数据：节点、事件、工具状态和证据处理结果；服务端不返回隐藏推理文本。
+- C++ `ticket-diagnosis-service` 和 Web 工作台会透传并展示上述公开轨迹；源码证据同时展示平台注册的 branch/commit，便于人工复核报告对应的代码版本。
 - `evaluation_cases.json` 和 `scripts/evaluate_agent.py` 提供离线、无外部模型调用的 Agent 评测，输出模块识别率、源码命中率、证据完整性、轨迹完整性和平均置信度。
 - DeepSeek 结构化报告节点加固：`deepseek-v4-flash` 使用 `json_mode`，prompt 显式携带 `DiagnosisReport` JSON schema，结果必须通过 Pydantic 校验；成功时合并规则证据，失败时 fallback 到规则报告。
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，按 Bug 描述、T/Q 机型、模块和日志关键词匹配。

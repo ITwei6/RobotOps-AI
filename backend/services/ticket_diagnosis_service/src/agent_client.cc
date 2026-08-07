@@ -139,6 +139,12 @@ void fillModuleRelation(const Json::Value& value, robotops::ticket_diagnosis::Di
     }
 }
 
+void fillTraceEvent(const Json::Value& value, robotops::ticket_diagnosis::DiagnosisTraceEvent* event) {
+    event->set_node(value.get("node", "").asString());
+    event->set_event(value.get("event", "").asString());
+    event->set_detail(value.get("detail", "").asString());
+}
+
 robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     const Json::Value& value,
     const robotops::ticket_diagnosis::BugTicket& ticket,
@@ -153,6 +159,7 @@ robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     report.set_agent_version(value.get("agent_version", "").asString());
     report.set_generation_mode(value.get("generation_mode", "deterministic_fallback").asString());
     report.set_generation_detail(value.get("generation_detail", "").asString());
+    report.set_trace_id(value.get("trace_id", "").asString());
 
     for (const auto& cause : value["possible_causes"]) {
         report.add_possible_causes(cause.asString());
@@ -174,6 +181,9 @@ robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     }
     for (const auto& source_value : value["evidence_sources"]) {
         fillSourceEvidence(source_value, report.add_evidence_sources());
+    }
+    for (const auto& trace_value : value["diagnostic_trace"]) {
+        fillTraceEvent(trace_value, report.add_diagnostic_trace());
     }
     return report;
 }
