@@ -38,6 +38,7 @@ class KnowledgeToolTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["knowledge_items"][0]["source"], "sop-interaction-001")
         self.assertIn("CheckTouch", result["knowledge_items"][0]["content"])
+        self.assertEqual(result["retrieval"]["method"], "hybrid_bm25_tfidf")
 
     def test_missing_knowledge_root_is_empty(self):
         self.assertEqual(

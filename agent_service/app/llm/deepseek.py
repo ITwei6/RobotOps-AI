@@ -61,6 +61,7 @@ def _build_prompt(request: Dict[str, Any], rule_report: Dict[str, Any]) -> str:
         "evidence_claims 必须把 summary 和 possible_causes 拆成可复核结论；每项只能引用输入中真实存在的日志/源码证据，"
         "引用格式使用 log:module/file:line 或 source:repo/file:function；没有证据时 support_level=unknown、evidence_refs=[]。\n"
         "规则 baseline 只是补充先验，不得覆盖与本次真实日志、源码上下文冲突的证据。\n"
+        "历史案例和知识库是 RAG 参考上下文，不是本次 Bug 的事实证据；不能把它们的 source/document_id 写入 evidence_refs，也不能仅凭 RAG 命中提高 confidence。\n"
         "Source investigation 仅记录检索过程和停止原因，不是独立事实证据。\n"
         "trace_id 和 diagnostic_trace 由服务端生成，不需要你填写，也不要输出隐藏推理。\n"
         "execution_chain 只能描述规则 baseline 或证据支持的执行阶段，不能把未观测到的阶段写成确定事实。\n"

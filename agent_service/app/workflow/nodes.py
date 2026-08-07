@@ -627,6 +627,8 @@ def _tool_observation(tool_name: str, args: Dict[str, Any], result: Dict[str, An
         payload["source_sync"] = dict(result.get("source_sync") or {})
     if "source_index" in result:
         payload["source_index"] = dict(result.get("source_index") or {})
+    if "retrieval" in result:
+        payload["retrieval"] = dict(result.get("retrieval") or {})
     observation: ToolObservation = {"tool_name": tool_name, "ok": ok, "args": args, "result": payload}
     if not ok:
         observation["error"] = str(result.get("error") or f"{tool_name} failed")

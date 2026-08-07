@@ -66,6 +66,8 @@ status
 
 `evidence_claims` 是报告结论层的 grounding 结果。每项只能引用当前 `evidence_logs` 或 `evidence_sources` 生成的稳定 ref；无法绑定证据时必须使用 `support_level=unknown`，不能因为历史案例或知识库命中而标记为已确认。
 
+`case_search` 和 `knowledge_search` 使用本地混合 RAG Retriever。RAG 返回的历史案例、SOP、错误码和模块说明属于参考上下文，不能写入当前报告的日志/源码 `evidence_refs`；日志时间窗口和源码 revision 检索仍由各自专用工具负责。
+
 内部从直接调用 `rules.diagnose()` 演进为：
 
 ```text

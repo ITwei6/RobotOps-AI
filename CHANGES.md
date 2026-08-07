@@ -2,6 +2,46 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-07 阶段 8.1：案例与知识库混合 RAG
+
+修改内容：
+
+- 新增无外部依赖的 `LocalHybridRetriever`，结合 BM25 精确检索和 TF-IDF 稀疏向量余弦相似度。
+- `case_search` 升级为历史 Bug 案例混合 RAG，`knowledge_search` 升级为 SOP、错误码和模块知识混合 RAG。
+- 检索结果返回 `document_id`、`match_score`、`retrieval.method`、BM25 分数、向量分数、模块加分和 rank，便于 Agent 追踪召回来源。
+- 增加进程内文档索引缓存，按 JSON/JSONL 文件路径、mtime 和 size 自动失效刷新。
+- LangChain Tool 描述明确 RAG 结果只是参考上下文，不能替代当前 Bug 的日志和源码证据。
+- DeepSeek prompt 明确禁止把历史案例或知识库 source 写入当前诊断 `evidence_refs`，也不能仅凭 RAG 命中提高置信度。
+
+原因：
+
+- 当前案例和知识检索只有关键词比例，无法稳定处理同义描述和多关键词权重。
+- RAG 应服务于历史经验、SOP 和错误码，不应替代结构化日志时间窗口或 revision 感知源码检索。
+- 开发环境没有 FAISS、Chroma 或 sklearn，先实现可离线、可复现、可解释的本地混合检索，为后续替换向量后端保留边界。
+
+开发过程记录：
+
+- 先复用现有 JSON/JSONL 数据格式，没有要求迁移历史案例或知识文件。
+- 将 token 化、BM25、TF-IDF cosine、文档加载和缓存收敛到独立 `rag_retriever.py`，避免 case/knowledge 工具重复实现。
+- 保留空目录时的旧响应格式，避免无知识库时影响现有 Agent 流程。
+- 通过测试验证检索分数组成和排名元数据，确认 RAG 参考结果不会进入 evidence claim 的当前日志/源码引用集合。
+
+验证结果：
+
+- Agent 单测：52/52 通过。
+- 离线评测：3/3 通过。
+- `claim_grounding_rate`：1.0。
+- Agent compileall：通过。
+
+下一步：
+
+- 增加真实历史案例和 SOP 数据，评测 RAG 召回率、MRR、nDCG 和人工采纳率。
+- 知识库规模增长后，再评估 Elasticsearch、Qdrant 或 FAISS 后端，并保持当前 Retriever 接口不变。
+
+是否已提交 Git：
+
+- 待本阶段最终检查完成后提交。
+
 ## 2026-08-07 阶段 8.0：Agent 结论证据绑定与循环停止控制
 
 修改内容：

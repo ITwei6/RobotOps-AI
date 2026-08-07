@@ -43,6 +43,7 @@ class CaseToolTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["history_cases"][0]["case_id"], "case-touch-001")
         self.assertGreater(result["history_cases"][0]["match_score"], 0.5)
+        self.assertEqual(result["retrieval"]["method"], "hybrid_bm25_tfidf")
 
     def test_missing_case_root_is_a_valid_empty_result(self):
         result = search_cases(("/path/that/does/not/exist",), {"title": "unknown"})

@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 8.0：Agent 结论证据绑定与循环停止控制
+阶段 8.1：案例与知识库混合 RAG
 ```
 
 已完成：
@@ -342,6 +342,8 @@ CHANGES.md
 - Agent 报告新增 `evidence_claims`，每条摘要/原因都带证据引用、支持等级和结论置信度；无证据结论会标记为 `unknown`。
 - LangGraph 在没有新增日志/源码证据时停止重复工具循环，但不会跳过尚未执行的历史案例和知识库工具。
 - 离线评测新增结论 grounding 和证据覆盖率指标，C++ 与 Web 已透传结论证据绑定。
+- `case_search` 和 `knowledge_search` 已升级为本地混合 RAG，结合 BM25 与 TF-IDF cosine，并返回可追踪的召回分数和文档来源。
+- RAG 只用于历史案例、SOP、错误码和模块知识；日志继续使用时间窗口检索，源码继续使用 revision 感知索引。
 
 当前限制：
 
@@ -361,7 +363,7 @@ CHANGES.md
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
 - Agent 当前版本为 `langgraph-diagnosis-v3`，`generation_detail` 会记录源码索引检索策略和本次构建、更新或复用状态。
 - 全模块日志上下文会按模块均衡分配条数，避免 interaction 高频日志挤掉 mc、hal、hds、sm 和 agent 证据；Agent 同时保留 trace/task/session 关联字段。
-- 下一阶段优先接入人工复核反馈和最终修复 commit，扩充 DeepSeek/fallback 结论一致性评测。
+- 下一阶段优先加入真实案例/SOP 评测集和人工采纳率指标，再评估 Elasticsearch、Qdrant 或 FAISS 后端。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。

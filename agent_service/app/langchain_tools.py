@@ -100,13 +100,13 @@ def build_tool_registry(
         "case_search": StructuredTool.from_function(
             func=case_search,
             name="case_search",
-            description="检索相同机器人类型和模块的历史诊断案例。",
+            description="使用混合 RAG 检索相同机器人类型和模块的历史诊断案例；结果只作为参考，不是当前 Bug 事实证据。",
             args_schema=CaseSearchToolInput,
         ),
         "knowledge_search": StructuredTool.from_function(
             func=knowledge_search,
             name="knowledge_search",
-            description="检索模块 SOP、错误码和排障知识。",
+            description="使用混合 RAG 检索模块 SOP、错误码和排障知识；结果只作为参考，不替代当前日志/源码证据。",
             args_schema=KnowledgeSearchToolInput,
         ),
     }
