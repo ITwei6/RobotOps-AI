@@ -428,7 +428,7 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 8.2：工业级 RAG 后端阶段
+阶段 8.3：Embedding 服务配置阶段
 ```
 
 当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索使用 revision 感知索引并支持持续更新；`source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。Agent 现已返回安全的 `trace_id`、`diagnostic_trace` 和 `evidence_claims`，并配套离线评测集和指标脚本，评估模块识别、源码命中、证据 grounding、轨迹完整性、结论绑定和置信度。流程不由固定函数或路径决定；无新增证据且没有待执行工具时会停止重复循环。案例和知识库已使用本地 BM25 + TF-IDF cosine 混合 RAG，并可切换认证 Elasticsearch 持久化索引、metadata 过滤和 OpenAI-compatible dense vector；RAG 只作为参考上下文，不进入当前日志/源码证据绑定。React + TypeScript + Vite Web 工作台已通过完整链路联调；C++ proto 已透传执行链、模块关系、Agent 版本、生成模式、trace ID、公开诊断轨迹和结论证据绑定，Web 可展示源码版本、工作流节点和证据引用。log-service 现已支持常见压缩日志包安全解压，并对全模块时间窗口做均衡采样；Agent 保留 trace/task/session 关联字段用于跨模块诊断。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。

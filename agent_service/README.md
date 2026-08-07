@@ -32,7 +32,17 @@
 - `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，使用同一混合 RAG，并返回带 `source` 的参考条目。
 - `rag_retriever.py` 是依赖无关的本地 Retriever；索引按文档文件 mtime/size 在进程内缓存并自动刷新，RAG 结果只作为参考上下文。
 - `industrial_rag.py` 支持认证 Elasticsearch、文档 chunk、metadata 过滤、版本化 index 和 OpenAI-compatible Embedding；通过 `ROBOTOPS_RAG_BACKEND=elasticsearch` 启用。
+- `embedding_service` 提供本地 FastEmbed OpenAI-compatible 服务：`POST http://127.0.0.1:9004/v1/embeddings`，默认 `BAAI/bge-small-zh-v1.5`、512 维；模型缓存通过 `ROBOTOPS_EMBEDDING_CACHE_DIR` 配置。
 - `scripts/index_rag.py` 用于批量导入案例/知识文档；没有 Embedding 时使用 ES BM25，ES 不可用时回退本地 Retriever。
+
+Embedding 服务配置：
+
+```bash
+python3 -m pip install -r agent_service/requirements.txt
+ROBOTOPS_EMBEDDING_CACHE_DIR=/var/lib/robotops/embedding-cache ./scripts/run_dev_stack.sh
+```
+
+首次请求会下载并加载模型；容器无外网时应从可联网环境预置同一缓存目录。服务未就绪时返回 503，RAG 会继续使用 BM25 或本地 fallback，不会把低质量向量当作有效证据。
 - C++ `ticket-diagnosis-service.RunDiagnosis` 可通过 `log_package_id` 触发 Agent 自动调用 `log-service` 获取发生时间窗口日志。
 - 平台源码仓库注册表：管理员通过 `GET /source-repositories` 查看，`PUT /source-repositories/{module_name}` 配置 `repo_url`、默认 `branch`、可选 `commit` 和 `local_path`；诊断时按 `main_module` 自动取用。
 - `source_search` 支持源码工作区同步：远程 `source_repo` 未缓存时 clone，已有 Git 仓库先 `pull --ff-only`，可按 branch/commit 固定版本后再检索。

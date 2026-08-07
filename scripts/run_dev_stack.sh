@@ -34,12 +34,39 @@ if ! curl -fsS http://127.0.0.1:9001/health >/dev/null 2>&1; then
 fi
 wait_for_service "log-service" "http://127.0.0.1:9001/health"
 
+embedding_model="${ROBOTOPS_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}"
+if [[ "${ROBOTOPS_EMBEDDING_ENABLED:-true}" != "false" ]]; then
+  embedding_env=( -e "ROBOTOPS_EMBEDDING_MODEL=${embedding_model}" )
+  if [[ -n "${ROBOTOPS_EMBEDDING_CACHE_DIR:-}" ]]; then
+    embedding_env+=( -e "ROBOTOPS_EMBEDDING_CACHE_DIR=${ROBOTOPS_EMBEDDING_CACHE_DIR}" )
+  fi
+  if ! curl -fsS http://127.0.0.1:9004/health >/dev/null 2>&1; then
+    docker exec -d -w "${container_project}" \
+      "${embedding_env[@]}" \
+      "${container_name}" \
+      python3 -m uvicorn embedding_service.app:app --host 0.0.0.0 --port 9004
+  fi
+  wait_for_service "embedding-service" "http://127.0.0.1:9004/health"
+fi
+
 if ! curl -fsS http://127.0.0.1:9003/health >/dev/null 2>&1; then
   agent_env=(
     -e ROBOTOPS_LOG_SERVICE_URL=http://127.0.0.1:9001
     -e ROBOTOPS_SOURCE_SEARCH_ROOTS=/home/dev/workspace/interaction
     -e ROBOTOPS_SOURCE_INDEX_ROOT=/home/dev/workspace/RobotOps-AI/.robotops/source-index
   )
+  if [[ "${ROBOTOPS_EMBEDDING_ENABLED:-true}" != "false" ]]; then
+    agent_env+=(
+      -e ROBOTOPS_RAG_EMBEDDING_URL=http://127.0.0.1:9004/v1
+      -e ROBOTOPS_RAG_EMBEDDING_MODEL="${embedding_model}"
+      -e ROBOTOPS_RAG_EMBEDDING_DIMENSIONS=512
+    )
+  fi
+  for rag_var in ROBOTOPS_RAG_BACKEND ROBOTOPS_RAG_ELASTICSEARCH_URL ROBOTOPS_RAG_ELASTICSEARCH_USER ROBOTOPS_RAG_ELASTICSEARCH_PASSWORD ROBOTOPS_RAG_INDEX_PREFIX; do
+    if [[ -n "${!rag_var:-}" ]]; then
+      agent_env+=( -e "${rag_var}=${!rag_var}" )
+    fi
+  done
   if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
     agent_env+=(
       -e ROBOTOPS_LLM_ENABLED=true
