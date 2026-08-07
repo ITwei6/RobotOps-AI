@@ -143,10 +143,12 @@ MC / HAL / Audio / Light
 - 对模型查询执行模块白名单、源码原文、证据引用和重复查询校验，并限制源码分析轮次。
 - 建立 revision 感知的符号、调用关系、接口路径和文件摘要索引；Git 更新和本地文件变化均会增量刷新。
 - 索引未命中或刷新失败时自动回退全文搜索，源码证据绑定 Git revision 或 `workspace-*` 快照。
+- 增加安全的 `trace_id` 和公开诊断轨迹，记录节点流转、工具执行和证据处理状态。
+- 增加离线评测集，避免 Agent 质量只能通过一次 DeepSeek live 调用主观判断。
 
 下一阶段优先级：
 
-1. 将源码调查轨迹、仓库 revision 和索引状态透传到诊断报告与 Web 证据视图。
+1. 将公开诊断轨迹、仓库 revision 和索引状态展示到 Web 证据视图。
 2. 将真实 interaction、mc、hal、hds、sm、agent Bug 诊断过程沉淀为可检索历史案例。
 3. 将本地案例和知识文件扩展为 knowledge-service / RAG。
 4. 增加 LangGraph checkpoint、诊断轨迹持久化和人工复核反馈。

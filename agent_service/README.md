@@ -20,6 +20,8 @@
 - `source_analysis` 会让 DeepSeek 根据本轮真实源码上下文输出结构化后续调查计划，查询只有通过模块白名单、源码原文、证据引用和去重校验后才会回到 `source_search` 执行。
 - DeepSeek 规划不可用或候选查询未通过校验时，Agent 从当前源码片段通用提取被调符号作为 deterministic fallback；两种模式都不依赖固定业务函数或文件路径。
 - 源码分析使用独立迭代上限，达到上限、没有新证据或模型确认信息充分时停止并进入报告阶段。
+- `/diagnose` 返回 `trace_id` 和 `diagnostic_trace`，只记录公开运行元数据：节点、事件、工具状态和证据处理结果；服务端不返回隐藏推理文本。
+- `evaluation_cases.json` 和 `scripts/evaluate_agent.py` 提供离线、无外部模型调用的 Agent 评测，输出模块识别率、源码命中率、证据完整性、轨迹完整性和平均置信度。
 - DeepSeek 结构化报告节点加固：`deepseek-v4-flash` 使用 `json_mode`，prompt 显式携带 `DiagnosisReport` JSON schema，结果必须通过 Pydantic 校验；成功时合并规则证据，失败时 fallback 到规则报告。
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，按 Bug 描述、T/Q 机型、模块和日志关键词匹配。
 - `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，返回带 `source` 的参考条目。
@@ -94,4 +96,10 @@ uvicorn agent_service.app.main:app --host 0.0.0.0 --port 9601
 
 ```bash
 python3 -m unittest discover -s agent_service/tests
+```
+
+离线评测：
+
+```bash
+python3 scripts/evaluate_agent.py
 ```

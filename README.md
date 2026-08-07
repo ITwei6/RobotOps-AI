@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 7.6：Agent revision 感知的源码索引
+阶段 7.7：Agent 可观测性与离线评测
 ```
 
 已完成：
@@ -334,6 +334,8 @@ CHANGES.md
 - `source_search` 已内置源码符号、调用关系、接口路径和文件摘要索引；符号查询优先走索引，日志原文等未命中查询自动回退 `rg`。
 - 每次源码检索前仍会同步 Git 仓库；索引绑定 Git revision，并使用 `git diff` 增量重建变更文件。同 revision 下的本地修改、文件新增和删除通过工作区文件状态刷新。
 - 非 Git 本地源码使用 `workspace-*` 内容快照作为源码证据版本，索引异常时不会阻断诊断链路。
+- `/diagnose` 已返回 `trace_id` 和安全的 `diagnostic_trace`，记录工作流节点、工具状态和证据处理过程，不暴露模型隐藏推理。
+- 已加入跨模块离线评测集和 `scripts/evaluate_agent.py`，统计模块识别率、源码命中率、证据完整性、轨迹完整性、置信度等指标。
 - `agent-service` 已加固 DeepSeek 结构化报告节点：LLM 成功时保留规则证据，LLM 失败时自动 fallback 并压低置信度。
 - C++ `DiagnosisReport` 已透传 `execution_chain`、`module_relations`、`agent_version`、`generation_mode` 和 `generation_detail`，Web 工作台直接展示真实 Agent 结果。
 
@@ -354,7 +356,7 @@ CHANGES.md
 - `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
 - Agent 当前版本为 `langgraph-diagnosis-v3`，`generation_detail` 会记录源码索引检索策略和本次构建、更新或复用状态。
-- 下一阶段优先将源码调查轨迹、仓库 revision 和索引状态结构化透传到 Web 证据视图。
+- 下一阶段优先把 `diagnostic_trace`、源码调查原因、仓库 revision 和索引状态展示到 Web 证据视图，并扩充真实脱敏 Bug 评测集。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。

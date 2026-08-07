@@ -56,6 +56,8 @@ recommended_actions
 confidence
 questions_for_human
 agent_version
+trace_id
+diagnostic_trace
 status
 ```
 
@@ -377,6 +379,8 @@ langgraph-diagnosis-v3
 ```
 
 - 如果进入人工确认，`status` 仍可为 `TASK_STATUS_SUCCEEDED`，但 `confidence` 必须低，并在 `questions_for_human` 中说明需要补充的信息。
+- 将内部 trace 清洗为公开 `diagnostic_trace`，只保留节点、事件和截断后的运行说明；不返回 prompt、模型隐藏推理或密钥。
+- 为本次工作流生成 `trace_id`，用于后续任务、报告和 Web 页面关联。
 
 ## 5. 图结构
 
@@ -690,6 +694,8 @@ python3 -m unittest discover -s agent_service/tests
 - 接入 `log_context`。
 - 接入 `source_search`。
 - 每次工具调用写入 observation 和 trace。
+- 每次工作流生成公开 `trace_id` 和 `diagnostic_trace`。
+- Agent 评测覆盖模块识别、源码证据命中、证据字段完整性和轨迹完整性。
 
 ### 阶段 5.4：历史案例和知识库
 

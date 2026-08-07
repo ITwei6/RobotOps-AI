@@ -62,6 +62,8 @@ class DiagnosisReport(BaseModel):
     agent_version: str = "rule-template-v1"
     generation_mode: str = "deterministic_fallback"
     generation_detail: str = ""
+    trace_id: str = ""
+    diagnostic_trace: List[Dict[str, Any]] = Field(default_factory=list)
     status: str = "TASK_STATUS_SUCCEEDED"
 
 

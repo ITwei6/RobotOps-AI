@@ -2,6 +2,70 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-07 阶段 7.7：Agent 可观测性与离线评测
+
+修改内容：
+
+- `DiagnosisReport` 新增 `trace_id` 和 `diagnostic_trace`，将 LangGraph 内部节点轨迹清洗为可公开的运行元数据。
+- 公开轨迹只包含节点、事件和截断后的状态说明，不包含模型隐藏推理、完整 prompt、日志包内容或 API key。
+- 新增三类跨模块离线评测案例：interaction 触摸拦截、未知 scheduler 校验链、mc action 拒绝。
+- 新增 `agent_service/evaluation.py`，计算模块识别率、源码命中率、证据完整性、轨迹完整性、trace ID 覆盖率和平均置信度。
+- 新增 `scripts/evaluate_agent.py`，强制关闭外部 LLM，保证评测可重复执行，不消耗 DeepSeek API。
+- 评测数据和 Agent 工作流解耦，案例只描述输入证据与期望结果，不向源码检索器写入固定规则。
+- Agent 文档和 LangGraph 设计文档补充可观测性字段、评测指标和简历项目定位。
+
+原因：
+
+- Agent 项目不能只展示“调用了大模型”，还需要证明工作流可观测、工具结果可验证、失败行为可复现。
+- 单次 DeepSeek live 调用无法稳定衡量 Agent 质量；离线评测可以持续检查模块判断、源码证据和 grounding 是否发生回归。
+- 公开轨迹可以为后续 Web 展示、人工复核和诊断任务持久化提供稳定接口。
+
+影响范围：
+
+- `agent_service/app/models.py`
+- `agent_service/app/workflow/state.py`
+- `agent_service/app/workflow/nodes.py`
+- `agent_service/app/llm/deepseek.py`
+- `agent_service/evaluation.py`
+- `agent_service/evaluation_cases.json`
+- `agent_service/tests/test_workflow.py`
+- `agent_service/tests/test_evaluation.py`
+- `scripts/evaluate_agent.py`
+- `README.md`
+- `AGENTS.md`
+- `agent_service/README.md`
+- `docs/08_agent_service_focus.md`
+- `docs/10_langgraph_workflow_design.md`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先确认 LangGraph 已经在 state 中积累完整 trace，但 `finalize_node` 只返回报告，外部 `/diagnose` 无法看到本次工作流经过了哪些节点。
+- 首次离线评测发现公开轨迹没有最后的 `finalize` 节点，修正轨迹生成时机并增加回归断言。
+- 评测脚本首次直接执行时发现项目根目录未加入 Python 模块搜索路径，修正为支持 `python3 scripts/evaluate_agent.py` 的独立入口。
+- 使用三个不同模块的脱敏案例验证评测逻辑，确保评测不依赖 interaction 专用规则，也不调用外部 DeepSeek。
+
+验证结果：
+
+- 离线评测：3/3 通过。
+- 模块识别率：1.0。
+- 必需源码函数命中率：1.0。
+- 证据完整性：1.0。
+- 公开诊断轨迹完整性：1.0。
+- trace ID 覆盖率：1.0。
+- 平均置信度：0.4733；证据不足的 scheduler 和 mc 案例保持低置信度。
+- 定向工作流测试和评测脚本均通过。
+
+下一步：
+
+- 阶段 7.8 将 `diagnostic_trace`、源码调查查询、索引状态和仓库 revision 接入 C++ 报告及 Web 证据视图。
+- 扩充更多真实脱敏 Bug，并加入 DeepSeek 与 deterministic fallback 的对比评测。
+- 增加人工复核反馈，使评测案例能够从真实诊断结果持续沉淀。
+
+是否已提交 Git：
+
+- 是。本阶段已按 Conventional Commit 提交。
+
 ## 2026-08-02 阶段 7.6：Agent revision 感知的源码索引
 
 修改内容：
@@ -56,7 +120,7 @@
 
 验证结果：
 
-- Agent 全量测试：48 个测试全部通过。
+- Agent 全量测试：50 个测试全部通过。
 - `python3 -m compileall -q agent_service/app`：通过。
 - 源码索引定向测试覆盖 C++ 定义/调用方、Python 调用、Topic 路径、复用、增量更新、删除、真实 Git pull 和全文 fallback。
 - 真实 interaction 索引包含 218 个文件，重复查询为 `reused`，符号查询策略为 `source_index`，源码版本为 `workspace-22bb69174315d5f8`。

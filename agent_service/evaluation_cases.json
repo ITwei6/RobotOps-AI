@@ -1,0 +1,119 @@
+{
+  "cases": [
+    {
+      "case_id": "interaction-touch-intercept",
+      "request": {
+        "bug": {
+          "bug_id": "eval-interaction-001",
+          "title": "触摸后机器人没有反应",
+          "description": "T 型机器人触摸后没有动作反馈",
+          "robot_type": "ROBOT_TYPE_T",
+          "main_module": "interaction",
+          "occurred_time": 1785396730000
+        },
+        "logs": [
+          {
+            "module_name": "interaction",
+            "file_name": "interaction.log",
+            "line_no": 3,
+            "log_time": 1785396730150,
+            "log_level": "WARN",
+            "message": "Current action is DAMPING_DEFAULT or PASSIVE_DEFAULT, ignore touch trigger"
+          }
+        ],
+        "sources": [
+          {
+            "repo": "interaction",
+            "file_path": "interaction/src/scheduler/checker/t1_checker.cpp",
+            "function_name": "T1Checker::CheckTouch",
+            "matched_text": "ignore touch trigger",
+            "snippet": "bool T1Checker::CheckTouch() { return false; }"
+          }
+        ]
+      },
+      "expected": {
+        "suspected_module": "interaction",
+        "required_source_functions": ["T1Checker::CheckTouch"]
+      }
+    },
+    {
+      "case_id": "scheduler-validation-chain",
+      "request": {
+        "bug": {
+          "bug_id": "eval-scheduler-001",
+          "title": "dispatch pipeline failed",
+          "description": "scheduler request was rejected before dispatch",
+          "robot_type": "ROBOT_TYPE_T",
+          "main_module": "scheduler",
+          "occurred_time": 1785396731000
+        },
+        "logs": [
+          {
+            "module_name": "scheduler",
+            "file_name": "scheduler.log",
+            "line_no": 8,
+            "log_time": 1785396731010,
+            "log_level": "ERROR",
+            "message": "dispatch pipeline failed"
+          }
+        ],
+        "sources": [
+          {
+            "repo": "scheduler",
+            "file_path": "scheduler/src/handler.cpp",
+            "function_name": "Scheduler::HandleRequest",
+            "matched_text": "dispatch pipeline failed",
+            "snippet": "return ValidateRequest(request);"
+          },
+          {
+            "repo": "scheduler",
+            "file_path": "scheduler/src/validator.cpp",
+            "function_name": "ValidateRequest",
+            "matched_text": "ValidateRequest",
+            "snippet": "bool ValidateRequest(Request request) { return request.valid(); }"
+          }
+        ]
+      },
+      "expected": {
+        "suspected_module": "scheduler",
+        "required_source_functions": ["Scheduler::HandleRequest", "ValidateRequest"]
+      }
+    },
+    {
+      "case_id": "mc-action-rejected",
+      "request": {
+        "bug": {
+          "bug_id": "eval-mc-001",
+          "title": "motor action rejected",
+          "description": "mc rejected the requested motor action",
+          "robot_type": "ROBOT_TYPE_Q",
+          "main_module": "mc",
+          "occurred_time": 1785396732000
+        },
+        "logs": [
+          {
+            "module_name": "mc",
+            "file_name": "mc.log",
+            "line_no": 21,
+            "log_time": 1785396732015,
+            "log_level": "ERROR",
+            "message": "SetMcAction rejected: action is not supported"
+          }
+        ],
+        "sources": [
+          {
+            "repo": "mc",
+            "file_path": "mc/src/controller/mc_controller.cpp",
+            "function_name": "McController::SetMcAction",
+            "matched_text": "SetMcAction rejected",
+            "snippet": "return action_registry_->Set(action);"
+          }
+        ]
+      },
+      "expected": {
+        "suspected_module": "mc",
+        "required_source_functions": ["McController::SetMcAction"]
+      }
+    }
+  ]
+}

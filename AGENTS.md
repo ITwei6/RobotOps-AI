@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 7.6：Agent revision 感知的源码索引阶段
+阶段 7.7：Agent 可观测性与离线评测阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、`ticket-diagnosis-service -> agent-service` 同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索采用通用流程：根据本次 Bug 和对应模块日志动态生成首轮查询，在平台注册的模块仓库中提取函数级上下文；随后由 `source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。`source_search` 现已使用 revision 感知的本地源码索引，记录 C/C++、Python 符号、调用关系、接口路径和文件摘要；远端仓库每次检索前 pull，revision 变化时根据 `git diff` 增量重建，同 revision 的本地修改也会失效旧索引。模型候选查询必须通过证据校验，流程不由固定函数或路径决定。React + TypeScript + Vite Web 工作台已通过完整链路联调；C++ proto 现已透传执行链、模块关系、Agent 版本和生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索使用 revision 感知索引并支持持续更新；`source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。Agent 现已返回安全的 `trace_id` 和 `diagnostic_trace`，并配套离线评测集和指标脚本，评估模块识别、源码命中、证据 grounding、轨迹完整性和置信度。流程不由固定函数或路径决定。React + TypeScript + Vite Web 工作台已通过完整链路联调；C++ proto 现已透传执行链、模块关系、Agent 版本和生成模式。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 
@@ -469,6 +469,8 @@ LangGraph / LangChain 使用原则：
 - 源码分析同时受 `ROBOTOPS_AGENT_MAX_SOURCE_ANALYSIS_ITERATIONS` 和全局工具轮次限制。
 - 源码索引必须绑定实际 Git revision 或 `workspace-*` 内容快照；仓库更新、本地修改、文件新增或删除后不得复用过期索引。
 - 索引检索失败时必须回退全文检索，不能因为索引损坏丢失源码取证能力。
+- `diagnostic_trace` 只能包含节点、工具状态、证据处理等运行元数据，不得包含模型隐藏推理、API key 或完整敏感 prompt。
+- 每次 Agent 工作流能力变更都必须同步更新离线评测集或评测断言，不能只依赖单次 DeepSeek live 调用。
 
 后续开发应优先把 interaction 真实 Bug 修复经验沉淀到 Agent 能力中，例如：
 

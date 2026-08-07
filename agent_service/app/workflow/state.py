@@ -66,6 +66,7 @@ class SourceInvestigation(TypedDict, total=False):
 class DiagnosisState(TypedDict, total=False):
     request: Dict[str, Any]
     bug: Dict[str, Any]
+    trace_id: str
 
     log_evidence: Annotated[List[Dict[str, Any]], operator.add]
     source_evidence: Annotated[List[Dict[str, Any]], operator.add]

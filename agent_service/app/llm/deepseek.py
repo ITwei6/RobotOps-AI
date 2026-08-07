@@ -60,6 +60,7 @@ def _build_prompt(request: Dict[str, Any], rule_report: Dict[str, Any]) -> str:
         "没有 evidence_refs 时不要输出该关系。\n"
         "规则 baseline 只是补充先验，不得覆盖与本次真实日志、源码上下文冲突的证据。\n"
         "Source investigation 仅记录检索过程和停止原因，不是独立事实证据。\n"
+        "trace_id 和 diagnostic_trace 由服务端生成，不需要你填写，也不要输出隐藏推理。\n"
         "execution_chain 只能描述规则 baseline 或证据支持的执行阶段，不能把未观测到的阶段写成确定事实。\n"
         "不能编造日志行、源码路径、函数名、故障码或责任模块。\n"
         "如果日志证据不足，confidence 必须 <= 0.35，并在 questions_for_human 中要求补充日志。\n"

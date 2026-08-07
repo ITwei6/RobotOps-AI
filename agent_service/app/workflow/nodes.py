@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import re
 from typing import Any, Dict, List
+from uuid import uuid4
 
 from agent_service.app.llm.deepseek import DeepSeekUnavailable, generate_structured_report
 from agent_service.app.llm.source_planner import (
@@ -31,6 +32,7 @@ def normalize_input_node(state: DiagnosisState) -> DiagnosisState:
     return {
         "request": request,
         "bug": dict(request.get("bug") or {}),
+        "trace_id": uuid4().hex,
         "log_evidence": _unique_logs(request.get("logs") or []),
         "source_evidence": _unique_sources(request.get("sources") or []),
         "module_relations": [],
@@ -406,6 +408,11 @@ def confidence_check_node(state: DiagnosisState) -> DiagnosisState:
 def finalize_node(state: DiagnosisState) -> DiagnosisState:
     report = dict(state.get("report") or state.get("rule_report") or _empty_report(state))
     report["agent_version"] = AGENT_VERSION
+    report["trace_id"] = str(state.get("trace_id") or "")
+    report["diagnostic_trace"] = _public_trace(
+        list(state.get("trace") or [])
+        + [_trace("finalize", "ok", "final report ready")]
+    )
     report.setdefault("status", "TASK_STATUS_SUCCEEDED")
     return {
         "report": DiagnosisReport(**report).model_dump(),
@@ -1112,6 +1119,19 @@ def _source_generation_detail(state: DiagnosisState) -> str:
         f"source planning={mode}, rounds={rounds}, stop={str(stop).lower()}; "
         f"source index={strategy}, refresh={refresh}"
     )
+
+
+def _public_trace(events: List[GraphTraceEvent]) -> List[Dict[str, str]]:
+    """Expose operational trace fields without model prompts or hidden reasoning."""
+    result: List[Dict[str, str]] = []
+    for event in events:
+        node = str(event.get("node") or "").strip()
+        status = str(event.get("event") or "").strip()
+        detail = str(event.get("detail") or "").strip()
+        if not node or not status:
+            continue
+        result.append({"node": node, "event": status, "detail": detail[:280]})
+    return result
 
 
 def _trace(node: str, event: str, detail: str) -> GraphTraceEvent:
