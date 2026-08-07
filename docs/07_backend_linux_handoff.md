@@ -260,7 +260,7 @@ robotops.log.LogService.ListLogFiles
 - 解析常见日志行的时间、等级、消息和原始行。
 - 使用内存索引保存导入结果。
 - 暂未接入 Elasticsearch / MySQL / Redis / RabbitMQ。
-- 暂不直接解析 `.zip` / `.tar.gz`。
+- `log-service.ImportLogPackage` 已支持目录、`.zip`、`.tar`、`.tar.gz` 和 `.tgz`；压缩包会在临时目录安全解压并自动识别外层目录，完成解析后清理临时文件。
 
 样例日志：
 

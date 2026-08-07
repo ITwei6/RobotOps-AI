@@ -28,6 +28,9 @@ class LogEvidence(BaseModel):
     log_level: str = ""
     message: str = ""
     raw_line: str = ""
+    trace_id: str = ""
+    task_id: str = ""
+    session_id: str = ""
 
 
 class SourceEvidence(BaseModel):

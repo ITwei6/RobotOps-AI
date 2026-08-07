@@ -49,6 +49,35 @@ class LogToolTest(unittest.TestCase):
         self.assertIn('"bug_id": ""', payload)
         self.assertIn('"package_id": "pkg-1"', payload)
 
+    @patch("agent_service.app.tools.log_tool.request.urlopen")
+    def test_package_context_keeps_correlated_modules_when_keywords_are_present(self, urlopen):
+        response = MagicMock()
+        response.read.return_value = json.dumps(
+            {
+                "response": {"code": 0, "message": "ok"},
+                "logs": [
+                    {"module_name": "interaction", "message": "touch ignored", "trace_id": "trace-1"},
+                    {"module_name": "mc", "message": "action changed", "task_id": "task-1"},
+                ],
+            }
+        ).encode("utf-8")
+        urlopen.return_value.__enter__.return_value = response
+
+        result = fetch_log_context(
+            log_service_url="http://127.0.0.1:9501",
+            timeout_seconds=1.0,
+            args={
+                "log_package_id": "pkg-1",
+                "occurred_time": 1785396730000,
+                "module_name": "",
+                "keywords": ["touch ignored"],
+            },
+        )
+
+        self.assertEqual([item["module_name"] for item in result["logs"]], ["interaction", "mc"])
+        self.assertEqual(result["logs"][0]["trace_id"], "trace-1")
+        self.assertEqual(result["logs"][1]["task_id"], "task-1")
+
 
 class SourceToolTest(unittest.TestCase):
     def test_search_source_returns_match_with_snippet(self):

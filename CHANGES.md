@@ -2,6 +2,62 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-07 阶段 7.9：日志包解析与多模块时间窗口聚合
+
+修改内容：
+
+- `log-service` 的 `ImportLogPackage` 支持已解压目录、`.zip`、`.tar`、`.tar.gz` 和 `.tgz`，压缩包解压后自动识别单层外包目录。
+- 增加压缩包条目路径校验、条目数量上限、解压总大小上限、软链接拒绝和临时目录清理，避免路径穿越及资源耗尽风险。
+- ZIP 在系统没有 `unzip` 命令时使用 Python 标准库 fallback；tar 系列使用系统 tar 命令，并统一使用参数转义。
+- `LogIndex::context` 在未指定模块时按模块分配上下文配额，优先保留每个模块靠近 Bug 时间点的日志，再将小模块未使用的配额回收给高频模块。
+- Agent `LogEvidence` 保留 `trace_id`、`task_id`、`session_id`，便于 interaction 与 mc/hal/hds/sm/agent 日志通过关联字段继续分析。
+- Agent 获取全模块日志时不再使用关键词过滤丢弃关联模块；只有明确指定模块时才应用关键词收窄。
+- 增加跨模块日志保留和关联字段的 Agent 测试。
+
+原因：
+
+- 真实测试人员上传的是 `robot_日期.zip` 完整日志包，日志服务不能要求人工预先解压。
+- interaction 通常是高频日志，简单的全局 500 条限制可能让 mc、hal、hds、sm 或 agent 的关键证据完全消失。
+- 跨模块诊断需要保留日志中的 trace/task/session 关联字段，而不是只保留可读消息。
+
+影响范围：
+
+- `backend/services/log_service/include/log_service/log_parser.h`
+- `backend/services/log_service/src/log_parser.cc`
+- `backend/services/log_service/src/log_index.cc`
+- `agent_service/app/models.py`
+- `agent_service/app/tools/log_tool.py`
+- `agent_service/tests/test_tools.py`
+- `CHANGES.md`
+
+开发过程记录：
+
+- 先确认现有 `GetLogContext` 已支持空模块查询，随后将改动集中在日志服务解析和索引边界，避免把压缩包逻辑重复放进 Agent。
+- 使用真实 sample 日志构造 `.tar.gz` 和 `.zip`，验证外层目录识别、模块名解析和日志时间转换。
+- 使用恶意 `../escape.log` ZIP 条目验证路径校验返回错误；同时验证没有 `unzip` 命令时 ZIP Python fallback 可用。
+- 构造 interaction 100 条、mc 1 条的窗口验证限额 10 条仍保留两个模块，结果为 interaction 9 条、mc 1 条。
+- 发现直接在容器任意目录运行 unittest 会缺少项目根路径，修正验证命令为从项目根目录执行。
+
+验证结果：
+
+- Agent 单测：51/51 通过。
+- Agent 离线评测：3/3 通过，既有指标保持 1.0。
+- Agent Python compileall：通过。
+- C++ `log_service`：Docker `dev-env-service` 内构建通过。
+- `.tar.gz` 导入：2 个文件、2 条日志成功。
+- `.zip` 导入：2 个文件、2 条日志成功。
+- 恶意压缩包：被拒绝，返回 `archive contains unsafe or too many entries`。
+- 多模块均衡窗口：interaction 9 条、mc 1 条。
+
+下一步：
+
+- 将日志包导入结果和包元数据持久化，支持异步导入状态和重复导入幂等。
+- 增加跨模块 correlation ID、时间邻近和源码调用链的综合证据评分。
+
+是否已提交 Git：
+
+- 待本阶段最终检查完成后提交。
+
 ## 2026-08-07 阶段 7.8：Agent 诊断轨迹贯通 C++ 与 Web
 
 修改内容：

@@ -37,7 +37,13 @@ private:
     static std::string parseLevel(const std::string& line);
     static std::string parseMessage(const std::string& line);
     static std::string makeLogId(const std::string& package_id, const std::string& module_name, int line_no);
+    static std::filesystem::path preparePackageRoot(
+        const std::string& package_id,
+        const std::filesystem::path& package_path,
+        std::filesystem::path* temporary_root);
+    static std::filesystem::path selectContentRoot(const std::filesystem::path& extraction_root);
+    static void validateArchiveEntries(const std::filesystem::path& archive_path);
+    static void validateExtractedTree(const std::filesystem::path& extraction_root);
 };
 
 } // namespace robotops::log_service
-

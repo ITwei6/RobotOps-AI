@@ -6,9 +6,14 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
+#include <system_error>
+#include <unistd.h>
 
 namespace robotops::log_service {
 namespace {
@@ -30,6 +35,101 @@ std::time_t toLocalTimeT(std::tm* tm) {
     return std::mktime(tm);
 }
 
+constexpr uintmax_t kMaxArchiveEntries = 20000;
+constexpr uintmax_t kMaxExtractedBytes = 1024ULL * 1024ULL * 1024ULL;
+
+std::string shellQuote(const std::string& value) {
+    std::string quoted("'");
+    for (const char ch : value) {
+        if (ch == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted += ch;
+        }
+    }
+    quoted += '\'';
+    return quoted;
+}
+
+std::string runCommand(const std::string& command) {
+    FILE* pipe = ::popen(command.c_str(), "r");
+    if (pipe == nullptr) {
+        throw std::runtime_error("failed to start archive command");
+    }
+
+    std::string output;
+    char buffer[4096];
+    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        output.append(buffer);
+        if (output.size() > 4 * 1024 * 1024) {
+            ::pclose(pipe);
+            throw std::runtime_error("archive listing is too large");
+        }
+    }
+
+    const int status = ::pclose(pipe);
+    if (status != 0) {
+        throw std::runtime_error("archive command failed");
+    }
+    return output;
+}
+
+bool isArchive(const std::filesystem::path& path) {
+    const std::string name = toLower(path.filename().string());
+    const auto endsWith = [&name](const std::string& suffix) {
+        return name.size() >= suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+    return path.has_extension() && (endsWith(".zip") || endsWith(".tar")
+        || endsWith(".tar.gz") || endsWith(".tgz"));
+}
+
+bool isTarGz(const std::filesystem::path& path) {
+    const std::string name = toLower(path.filename().string());
+    return (name.size() >= 7 && name.compare(name.size() - 7, 7, ".tar.gz") == 0)
+        || (name.size() >= 4 && name.compare(name.size() - 4, 4, ".tgz") == 0);
+}
+
+std::string zipListCommand(const std::string& archive) {
+    return "if command -v unzip >/dev/null 2>&1; then unzip -Z1 " + archive
+        + "; else python3 -c "
+        + shellQuote("import sys, zipfile; print('\\n'.join(item.filename for item in zipfile.ZipFile(sys.argv[1]).infolist()))")
+        + " " + archive + "; fi";
+}
+
+std::string zipExtractCommand(const std::string& archive, const std::string& destination) {
+    return "if command -v unzip >/dev/null 2>&1; then unzip -qq -o " + archive + " -d " + destination
+        + "; else python3 -c "
+        + shellQuote("import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])")
+        + " " + archive + " " + destination + "; fi";
+}
+
+bool unsafeArchiveEntry(const std::string& raw_entry) {
+    if (raw_entry.empty() || raw_entry.front() == '/' || raw_entry.front() == '\\'
+        || (raw_entry.size() > 1 && raw_entry[1] == ':')) {
+        return true;
+    }
+    const std::filesystem::path entry(raw_entry);
+    for (const auto& component : entry) {
+        if (component == "..") {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string sanitizedPackageId(const std::string& package_id) {
+    std::string value;
+    for (const char ch : package_id) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_') {
+            value += ch;
+        }
+    }
+    if (value.empty()) {
+        value = "package";
+    }
+    return value.substr(0, 48);
+}
+
 } // namespace
 
 std::vector<ParsedLogFile> LogParser::parsePackage(
@@ -42,13 +142,22 @@ std::vector<ParsedLogFile> LogParser::parsePackage(
         throw std::invalid_argument("package_path is required");
     }
 
-    const std::filesystem::path root(package_path);
-    if (!std::filesystem::exists(root)) {
+    const std::filesystem::path input_path(package_path);
+    if (!std::filesystem::exists(input_path)) {
         throw std::invalid_argument("package_path does not exist: " + package_path);
     }
-    if (!std::filesystem::is_directory(root)) {
-        throw std::invalid_argument("package_path must be an extracted log directory in MVP");
-    }
+
+    std::filesystem::path temporary_root;
+    const std::filesystem::path root = preparePackageRoot(package_id, input_path, &temporary_root);
+    struct TemporaryRootGuard {
+        std::filesystem::path path;
+        ~TemporaryRootGuard() {
+            if (!path.empty()) {
+                std::error_code error;
+                std::filesystem::remove_all(path, error);
+            }
+        }
+    } temporary_guard{temporary_root};
 
     std::vector<ParsedLogFile> parsed;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
@@ -65,6 +174,108 @@ std::vector<ParsedLogFile> LogParser::parsePackage(
         return lhs.file.module_name() < rhs.file.module_name();
     });
     return parsed;
+}
+
+std::filesystem::path LogParser::preparePackageRoot(
+    const std::string& package_id,
+    const std::filesystem::path& package_path,
+    std::filesystem::path* temporary_root) {
+    if (std::filesystem::is_directory(package_path)) {
+        return package_path;
+    }
+    if (!std::filesystem::is_regular_file(package_path) || !isArchive(package_path)) {
+        throw std::invalid_argument("package_path must be a directory or .zip/.tar/.tar.gz/.tgz archive");
+    }
+
+    const auto extraction_root = std::filesystem::temp_directory_path()
+        / ("robotops-log-" + sanitizedPackageId(package_id) + "-" + std::to_string(::getpid()));
+    std::error_code error;
+    std::filesystem::remove_all(extraction_root, error);
+    std::filesystem::create_directories(extraction_root);
+    if (!std::filesystem::exists(extraction_root)) {
+        throw std::runtime_error("failed to create archive extraction directory");
+    }
+
+    struct ExtractionGuard {
+        std::filesystem::path path;
+        bool keep = false;
+        ~ExtractionGuard() {
+            if (!keep) {
+                std::error_code cleanup_error;
+                std::filesystem::remove_all(path, cleanup_error);
+            }
+        }
+    } extraction_guard{extraction_root};
+    *temporary_root = extraction_root;
+    validateArchiveEntries(package_path);
+    const std::string archive = shellQuote(package_path.string());
+    const std::string destination = shellQuote(extraction_root.string());
+    const std::string name = toLower(package_path.filename().string());
+    if (name.size() >= 4 && name.compare(name.size() - 4, 4, ".zip") == 0) {
+        runCommand(zipExtractCommand(archive, destination));
+    } else if (isTarGz(package_path)) {
+        runCommand("tar -xzf " + archive + " -C " + destination + " --no-same-owner --no-same-permissions");
+    } else {
+        runCommand("tar -xf " + archive + " -C " + destination + " --no-same-owner --no-same-permissions");
+    }
+    validateExtractedTree(extraction_root);
+    extraction_guard.keep = true;
+    return selectContentRoot(extraction_root);
+}
+
+std::filesystem::path LogParser::selectContentRoot(const std::filesystem::path& extraction_root) {
+    std::vector<std::filesystem::directory_entry> entries;
+    for (const auto& entry : std::filesystem::directory_iterator(extraction_root)) {
+        entries.push_back(entry);
+    }
+    if (entries.size() == 1 && entries.front().is_directory()) {
+        return entries.front().path();
+    }
+    return extraction_root;
+}
+
+void LogParser::validateArchiveEntries(const std::filesystem::path& archive_path) {
+    const std::string name = toLower(archive_path.filename().string());
+    const std::string archive = shellQuote(archive_path.string());
+    const bool isZip = name.size() >= 4 && name.compare(name.size() - 4, 4, ".zip") == 0;
+    const std::string command = isZip
+        ? zipListCommand(archive)
+        : (isTarGz(archive_path) ? "tar -tzf " + archive : "tar -tf " + archive);
+    const std::string listing = runCommand(command);
+    size_t entries = 0;
+    size_t start = 0;
+    while (start < listing.size()) {
+        const size_t end = listing.find('\n', start);
+        const std::string entry = listing.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (!entry.empty()) {
+            if (++entries > kMaxArchiveEntries || unsafeArchiveEntry(entry)) {
+                throw std::invalid_argument("archive contains unsafe or too many entries");
+            }
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+}
+
+void LogParser::validateExtractedTree(const std::filesystem::path& extraction_root) {
+    uintmax_t total_bytes = 0;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             extraction_root, std::filesystem::directory_options::skip_permission_denied)) {
+        if (entry.is_symlink()) {
+            throw std::invalid_argument("archive symlinks are not allowed");
+        }
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        std::error_code error;
+        const auto size = entry.file_size(error);
+        if (error || size > kMaxExtractedBytes || total_bytes > kMaxExtractedBytes - size) {
+            throw std::invalid_argument("extracted archive exceeds size limit");
+        }
+        total_bytes += size;
+    }
 }
 
 ParsedLogFile LogParser::parseFile(

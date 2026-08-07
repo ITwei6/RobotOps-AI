@@ -41,7 +41,10 @@ def fetch_log_context(*, log_service_url: str, timeout_seconds: float, args: Dic
 
     logs = [_normalize_log(item) for item in data.get("logs") or []]
     keywords = [str(item).lower() for item in args.get("keywords") or [] if str(item).strip()]
-    if keywords:
+    # An unfiltered package context is the cross-module evidence set. Keep all
+    # modules when the caller did not request a specific module; otherwise a
+    # keyword hit in interaction could hide the correlated mc/hds/sm entries.
+    if keywords and str(args.get("module_name") or "").strip():
         matched = [item for item in logs if _matches_keywords(item, keywords)]
         if matched:
             logs = matched
@@ -57,6 +60,9 @@ def _normalize_log(item: Dict[str, Any]) -> Dict[str, Any]:
         "log_level": str(item.get("log_level") or ""),
         "message": str(item.get("message") or ""),
         "raw_line": str(item.get("raw_line") or item.get("message") or ""),
+        "trace_id": str(item.get("trace_id") or ""),
+        "task_id": str(item.get("task_id") or ""),
+        "session_id": str(item.get("session_id") or ""),
     }
 
 

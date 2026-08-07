@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 7.8：Agent 诊断轨迹贯通 C++ 与 Web
+阶段 7.9：日志包解析与多模块时间窗口聚合
 ```
 
 已完成：
@@ -343,7 +343,7 @@ CHANGES.md
 当前限制：
 
 - 后端服务当前使用内存存储，尚未接入 MySQL / Elasticsearch / Redis / RabbitMQ。
-- 日志包当前只支持已解压目录，尚未直接解析 `.zip` / `.tar.gz`。
+- `log-service` 已支持目录、`.zip`、`.tar`、`.tar.gz` 和 `.tgz` 日志包，并对压缩包路径、软链接、条目数量和解压大小进行安全校验。
 - `RunDiagnosis` 当前仍以调用方传入证据为主，但 Agent 已具备基于 `log_package_id` 主动拉取日志上下文的工具入口。
 - `case_search` 已支持本地 JSON/JSONL 案例索引，按 Bug 描述、机器人类型、主模块和日志关键词排序；没有案例目录时安全返回空结果。
 - Web 工作台已完成总览、Bug 分析、日志时间线和模块状态四个核心视图，通过 `CreateBugTicket -> RunDiagnosis` 调用完整后端链路。
@@ -357,7 +357,8 @@ CHANGES.md
 - `RunDiagnosisRequest` 已增加显式 `log_package_id`，C++ AgentClient 按“请求值优先、BugTicket 值兜底”传给 agent-service；Agent 可据此自动从 log-service 获取时间窗口日志。
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
 - Agent 当前版本为 `langgraph-diagnosis-v3`，`generation_detail` 会记录源码索引检索策略和本次构建、更新或复用状态。
-- 下一阶段优先扩充真实脱敏 Bug 评测集，比较 DeepSeek 与 deterministic fallback，并沉淀源码调查查询和人工反馈。
+- 全模块日志上下文会按模块均衡分配条数，避免 interaction 高频日志挤掉 mc、hal、hds、sm 和 agent 证据；Agent 同时保留 trace/task/session 关联字段。
+- 下一阶段优先持久化日志包导入状态，支持异步导入和幂等，并增强跨模块证据评分。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。

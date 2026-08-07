@@ -428,10 +428,10 @@ chore(scope): setup project skeleton
 当前处于：
 
 ```text
-阶段 7.8：Agent 诊断轨迹贯通 C++ 与 Web 阶段
+阶段 7.9：日志包解析与多模块时间窗口聚合阶段
 ```
 
-当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索使用 revision 感知索引并支持持续更新；`source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。Agent 现已返回安全的 `trace_id` 和 `diagnostic_trace`，并配套离线评测集和指标脚本，评估模块识别、源码命中、证据 grounding、轨迹完整性和置信度。流程不由固定函数或路径决定。React + TypeScript + Vite Web 工作台已通过完整链路联调；C++ proto 现已透传执行链、模块关系、Agent 版本、生成模式、trace ID 和公开诊断轨迹，Web 可展示源码版本和工作流节点。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
+当前已完成 `log-service` 初版、`ticket-diagnosis-service` 初版、`agent-service` 规则模板初版、同步诊断编排，并实际使用 LangGraph 编排诊断工作流、使用 LangChain `StructuredTool` 包装日志/源码/案例/知识工具。DeepSeek `deepseek-v4-flash` 已使用 `json_mode` 和显式 Pydantic schema 完成真实结构化调用，失败时仍安全 fallback。源码检索使用 revision 感知索引并支持持续更新；`source_analysis` 根据每轮真实源码继续提出被调符号、RPC/Topic 或接口查询。Agent 现已返回安全的 `trace_id` 和 `diagnostic_trace`，并配套离线评测集和指标脚本，评估模块识别、源码命中、证据 grounding、轨迹完整性和置信度。流程不由固定函数或路径决定。React + TypeScript + Vite Web 工作台已通过完整链路联调；C++ proto 现已透传执行链、模块关系、Agent 版本、生成模式、trace ID 和公开诊断轨迹，Web 可展示源码版本和工作流节点。log-service 现已支持常见压缩日志包安全解压，并对全模块时间窗口做均衡采样；Agent 保留 trace/task/session 关联字段用于跨模块诊断。每个阶段完成后必须更新 `CHANGES.md` 并提交 Git。
 
 ## 13. 后续开发重心
 
