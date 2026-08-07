@@ -72,6 +72,13 @@ message DiagnosisTraceEvent {
   string detail = 3;
 }
 
+message DiagnosisEvidenceClaim {
+  string claim = 1;
+  repeated string evidence_refs = 2;
+  string support_level = 3;
+  double confidence = 4;
+}
+
 message DiagnosisReport {
   string report_id = 1;
   string task_id = 2;
@@ -94,6 +101,7 @@ message DiagnosisReport {
   string generation_detail = 19;
   string trace_id = 20;
   repeated DiagnosisTraceEvent diagnostic_trace = 21;
+  repeated DiagnosisEvidenceClaim evidence_claims = 22;
 }
 
 message CreateBugTicketRequest {

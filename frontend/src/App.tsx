@@ -56,6 +56,13 @@ type DiagnosticTraceEvent = {
   detail: string;
 };
 
+type EvidenceClaim = {
+  claim: string;
+  evidence_refs: string[];
+  support_level: "confirmed" | "likely" | "unknown";
+  confidence: number;
+};
+
 type Report = {
   summary: string;
   suspected_module: string;
@@ -73,6 +80,7 @@ type Report = {
   }>;
   evidence_logs: EvidenceLog[];
   evidence_sources: SourceEvidence[];
+  evidence_claims: EvidenceClaim[];
   recommended_actions: string[];
   confidence: number;
   questions_for_human: string[];
@@ -112,6 +120,9 @@ const demoReport: Report = {
     { node: "llm_report", event: "ok", detail: "generated report with deepseek-v4-flash" },
     { node: "finalize", event: "ok", detail: "final report ready" },
   ],
+  evidence_claims: [
+    { claim: "触摸事件被 interaction 前置检查拦截。", evidence_refs: ["log:interaction/interaction.log:18342"], support_level: "confirmed", confidence: 0.8 },
+  ],
   status: "TASK_STATUS_SUCCEEDED",
 };
 
@@ -140,6 +151,7 @@ function normalizeReport(raw: Partial<Report>): Report {
     module_relations: raw.module_relations ?? [],
     evidence_logs: raw.evidence_logs ?? [],
     evidence_sources: raw.evidence_sources ?? [],
+    evidence_claims: raw.evidence_claims ?? [],
     recommended_actions: raw.recommended_actions ?? [],
     confidence: raw.confidence ?? 0,
     questions_for_human: raw.questions_for_human ?? [],
@@ -269,12 +281,16 @@ function Overview({ report, confidencePercent, onRun, onOpenAnalysis }: { report
 
 function Analysis({ form, setForm, report, isRunning, apiState, onSubmit }: { form: typeof initialForm; setForm: Dispatch<SetStateAction<typeof initialForm>>; report: Report; isRunning: boolean; apiState: string; onSubmit: (event: FormEvent) => void }) {
   const generation = generationPresentation(report.generation_mode);
-  return <div className="analysis-layout"><section className="panel form-panel"><div className="panel-header"><div><span className="eyebrow">BUG CONTEXT</span><h2>提交诊断上下文</h2></div><span className="status-badge neutral"><FileSearch size={14} />只需要现象和日志包</span></div><form onSubmit={onSubmit}><label>Bug 标题<input value={form.title} onChange={(e) => setForm((old) => ({ ...old, title: e.target.value }))} /></label><label>现象描述<textarea rows={5} value={form.description} onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))} /></label><div className="form-two"><label>机器人类型<select value={form.robot_type} onChange={(e) => setForm((old) => ({ ...old, robot_type: e.target.value }))}><option value="ROBOT_TYPE_T">T 型机器人</option><option value="ROBOT_TYPE_Q">Q 型机器人</option></select></label><label>主模块<select value={form.main_module} onChange={(e) => setForm((old) => ({ ...old, main_module: e.target.value }))}><option value="interaction">interaction</option><option value="mc">mc</option><option value="agent">agent</option><option value="hds">hds</option><option value="sm">sm</option></select></label></div><div className="form-two"><label>发生时间<input type="datetime-local" value={form.occurred_time} onChange={(e) => setForm((old) => ({ ...old, occurred_time: e.target.value }))} /></label><label>日志包 ID<input value={form.log_package_id} onChange={(e) => setForm((old) => ({ ...old, log_package_id: e.target.value }))} /></label></div><div className="form-note"><ShieldCheck size={16} />测试人员只需提供 Bug 现象、时间和日志包；源码由平台配置。</div><button className="button primary full" type="submit" disabled={isRunning}>{isRunning ? <><RefreshCw size={16} className="spin" />Agent 分析中...</> : <><Sparkles size={16} />启动 Agent 诊断</>}</button>{apiState === "error" && <div className="inline-warning"><AlertTriangle size={15} />完整后端链路当前不可用，页面保留上一次报告。</div>}</form></section><section className="panel report-panel"><div className="panel-header"><div><span className="eyebrow">DIAGNOSIS REPORT</span><h2>结构化诊断报告</h2></div><div className="report-badges"><span className={`status-badge ${generation.tone}`} title={report.generation_detail || generation.label}>{generation.label}</span><span className={`status-badge ${report.confidence >= 0.8 ? "success" : "warning"}`}>{Math.round(report.confidence * 100)}% 置信度</span></div></div><div className="report-summary"><span className="report-label">疑似责任模块</span><strong>{report.suspected_module}</strong><p>{report.summary}</p></div><AgentObservability report={report} /><ExecutionChain items={report.execution_chain} /><div className="report-section"><div className="section-title"><Code2 size={16} />源码证据 <span>{report.evidence_sources.length}</span></div>{report.evidence_sources.length ? report.evidence_sources.map((source) => <div className="source-card" key={`${source.file_path}-${source.function_name}`}><div><strong>{source.function_name || "未识别函数"}</strong><span>{source.file_path}</span></div>{source.commit && <small className="source-version"><Code2 size={12} />{source.branch || "workspace"} · {source.commit.slice(0, 12)}</small>}<code>{source.snippet}</code></div>) : <div className="empty-state">尚未获得真实源码证据，当前显示的是规则导航提示。</div>}</div><div className="report-section"><div className="section-title"><TerminalSquare size={16} />日志证据 <span>{report.evidence_logs.length}</span></div><div className="evidence-log-list">{report.evidence_logs.map((log) => <div className="evidence-log" key={`${log.file_name}-${log.line_no}`}><span className="log-level">{log.log_level}</span><div><strong>{log.module_name} / {log.file_name}:{log.line_no}</strong><p>{log.message}</p></div></div>)}</div></div></section></div>;
+  return <div className="analysis-layout"><section className="panel form-panel"><div className="panel-header"><div><span className="eyebrow">BUG CONTEXT</span><h2>提交诊断上下文</h2></div><span className="status-badge neutral"><FileSearch size={14} />只需要现象和日志包</span></div><form onSubmit={onSubmit}><label>Bug 标题<input value={form.title} onChange={(e) => setForm((old) => ({ ...old, title: e.target.value }))} /></label><label>现象描述<textarea rows={5} value={form.description} onChange={(e) => setForm((old) => ({ ...old, description: e.target.value }))} /></label><div className="form-two"><label>机器人类型<select value={form.robot_type} onChange={(e) => setForm((old) => ({ ...old, robot_type: e.target.value }))}><option value="ROBOT_TYPE_T">T 型机器人</option><option value="ROBOT_TYPE_Q">Q 型机器人</option></select></label><label>主模块<select value={form.main_module} onChange={(e) => setForm((old) => ({ ...old, main_module: e.target.value }))}><option value="interaction">interaction</option><option value="mc">mc</option><option value="agent">agent</option><option value="hds">hds</option><option value="sm">sm</option></select></label></div><div className="form-two"><label>发生时间<input type="datetime-local" value={form.occurred_time} onChange={(e) => setForm((old) => ({ ...old, occurred_time: e.target.value }))} /></label><label>日志包 ID<input value={form.log_package_id} onChange={(e) => setForm((old) => ({ ...old, log_package_id: e.target.value }))} /></label></div><div className="form-note"><ShieldCheck size={16} />测试人员只需提供 Bug 现象、时间和日志包；源码由平台配置。</div><button className="button primary full" type="submit" disabled={isRunning}>{isRunning ? <><RefreshCw size={16} className="spin" />Agent 分析中...</> : <><Sparkles size={16} />启动 Agent 诊断</>}</button>{apiState === "error" && <div className="inline-warning"><AlertTriangle size={15} />完整后端链路当前不可用，页面保留上一次报告。</div>}</form></section><section className="panel report-panel"><div className="panel-header"><div><span className="eyebrow">DIAGNOSIS REPORT</span><h2>结构化诊断报告</h2></div><div className="report-badges"><span className={`status-badge ${generation.tone}`} title={report.generation_detail || generation.label}>{generation.label}</span><span className={`status-badge ${report.confidence >= 0.8 ? "success" : "warning"}`}>{Math.round(report.confidence * 100)}% 置信度</span></div></div><div className="report-summary"><span className="report-label">疑似责任模块</span><strong>{report.suspected_module}</strong><p>{report.summary}</p></div><AgentObservability report={report} /><EvidenceClaims claims={report.evidence_claims} /><ExecutionChain items={report.execution_chain} /><div className="report-section"><div className="section-title"><Code2 size={16} />源码证据 <span>{report.evidence_sources.length}</span></div>{report.evidence_sources.length ? report.evidence_sources.map((source) => <div className="source-card" key={`${source.file_path}-${source.function_name}`}><div><strong>{source.function_name || "未识别函数"}</strong><span>{source.file_path}</span></div>{source.commit && <small className="source-version"><Code2 size={12} />{source.branch || "workspace"} · {source.commit.slice(0, 12)}</small>}<code>{source.snippet}</code></div>) : <div className="empty-state">尚未获得真实源码证据，当前显示的是规则导航提示。</div>}</div><div className="report-section"><div className="section-title"><TerminalSquare size={16} />日志证据 <span>{report.evidence_logs.length}</span></div><div className="evidence-log-list">{report.evidence_logs.map((log) => <div className="evidence-log" key={`${log.file_name}-${log.line_no}`}><span className="log-level">{log.log_level}</span><div><strong>{log.module_name} / {log.file_name}:{log.line_no}</strong><p>{log.message}</p></div></div>)}</div></div></section></div>;
 }
 
 function AgentObservability({ report }: { report: Report }) {
   const revisions = [...new Set(report.evidence_sources.map((source) => source.commit).filter(Boolean))];
   return <div className="agent-observability"><div className="observability-head"><div><div className="section-title"><Activity size={16} />Agent 执行轨迹 <span>{report.diagnostic_trace.length}</span></div><p>只展示可复核的运行状态，不展示模型隐藏推理。</p></div><code title={report.trace_id}>{report.trace_id ? `trace:${report.trace_id.slice(0, 12)}` : "trace 未返回"}</code></div><div className="observability-meta"><span>Agent {report.agent_version}</span><span>{revisions.length ? `${revisions.length} 个源码版本` : "源码版本未返回"}</span><span>{report.generation_detail || "无生成元数据"}</span></div><div className="trace-list">{report.diagnostic_trace.length ? report.diagnostic_trace.map((item, index) => <div className="trace-item" key={`${item.node}-${index}`}><span className="trace-index">{index + 1}</span><div><strong>{item.node}</strong><span className={`trace-event ${item.event}`}>{item.event}</span><p>{item.detail}</p></div></div>) : <div className="empty-state">当前报告没有公开诊断轨迹。</div>}</div></div>;
+}
+
+function EvidenceClaims({ claims }: { claims: EvidenceClaim[] }) {
+  return <div className="evidence-claims"><div className="section-title"><ShieldCheck size={16} />结论证据绑定 <span>{claims.length}</span></div>{claims.length ? claims.map((claim, index) => <div className="claim-row" key={`${claim.claim}-${index}`}><span className={`claim-level ${claim.support_level}`}>{claim.support_level}</span><div><strong>{claim.claim}</strong><p>{claim.evidence_refs.length ? claim.evidence_refs.join(" · ") : "暂无直接证据，需人工确认"}</p></div></div>) : <div className="empty-state">当前报告尚未生成结论证据绑定。</div>}</div>;
 }
 
 const initialForm = { title: "", description: "", robot_type: "ROBOT_TYPE_T", main_module: "interaction", occurred_time: "", log_package_id: "" };

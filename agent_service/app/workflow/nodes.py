@@ -216,8 +216,20 @@ def observation_analyzer_node(state: DiagnosisState) -> DiagnosisState:
     next_route = "report"
     combined_sources = list(state.get("source_evidence") or []) + sources
     relations = _derive_module_relations(state, logs, sources)
-    if _can_use_more_tools(state) and _needs_more_tool_pass(state, logs, combined_sources):
+    previous_logs = _unique_logs(state.get("log_evidence") or [])
+    previous_sources = _unique_sources(state.get("source_evidence") or [])
+    new_logs = _unique_logs(logs)
+    new_sources = _unique_sources(sources)
+    log_keys = {_log_key(item) for item in previous_logs}
+    source_keys = {_source_key(item) for item in previous_sources}
+    has_new_evidence = any(_log_key(item) not in log_keys for item in new_logs)
+    has_new_evidence = has_new_evidence or any(_source_key(item) not in source_keys for item in new_sources)
+    has_new_evidence = has_new_evidence or bool(history_cases) or bool(knowledge_items)
+    needs_more_tools = _needs_more_tool_pass(state, logs, combined_sources)
+    if _can_use_more_tools(state) and needs_more_tools:
         next_route = "plan"
+    elif not has_new_evidence and state.get("observations"):
+        next_route = "report"
 
     return {
         "log_evidence": _unique_logs(logs),
@@ -226,7 +238,11 @@ def observation_analyzer_node(state: DiagnosisState) -> DiagnosisState:
         "knowledge_items": knowledge_items,
         "module_relations": relations,
         "next_route": next_route,
-        "trace": [_trace("observation_analyzer", "ok", "converted observations to evidence")],
+        "trace": [_trace(
+            "observation_analyzer",
+            "ok",
+            "converted observations to evidence" if has_new_evidence else "no new evidence; stop tool loop",
+        )],
     }
 
 
@@ -235,6 +251,9 @@ def source_analysis_node(state: DiagnosisState) -> DiagnosisState:
     cursor = int(state.get("source_analysis_cursor") or 0)
     if len(sources) <= cursor:
         return {
+            "next_route": "plan" if _can_use_more_tools(state) and _needs_more_tool_pass(
+                state, [], sources
+            ) else "report",
             "trace": [_trace("source_analysis", "skip", "no new source evidence")],
         }
 
@@ -341,6 +360,7 @@ def llm_report_node(state: DiagnosisState) -> DiagnosisState:
         report["module_relations"] = _unique_relations(
             list(report.get("module_relations") or []) + list(state.get("module_relations") or [])
         )
+        report = _ground_report_claims(report)
         report["agent_version"] = AGENT_VERSION
         report["generation_mode"] = "deepseek"
         report["generation_detail"] = (
@@ -364,6 +384,7 @@ def fallback_report_node(state: DiagnosisState) -> DiagnosisState:
     _merge_history_context(report, state.get("history_cases") or [])
     _merge_knowledge_context(report, state.get("knowledge_items") or [])
     report["module_relations"] = _unique_relations(state.get("module_relations") or [])
+    report = _ground_report_claims(report)
     report["agent_version"] = AGENT_VERSION
     llm_failed = any("llm_report failed" in str(error) for error in state.get("errors") or [])
     if llm_failed:
@@ -398,6 +419,7 @@ def confidence_check_node(state: DiagnosisState) -> DiagnosisState:
         state.get("source_evidence") or [],
         state.get("errors") or [],
     )
+    calibrated = _ground_report_claims(calibrated)
     return {
         "report": DiagnosisReport(**calibrated).model_dump(),
         "confidence": float(calibrated.get("confidence") or 0.0),
@@ -485,11 +507,90 @@ def _merge_report_evidence(report: Dict[str, Any], rule_report: Dict[str, Any]) 
         merged["module_relations"] = list(rule_report.get("module_relations") or [])
     if not merged.get("recommended_actions"):
         merged["recommended_actions"] = list(rule_report.get("recommended_actions") or [])
+    if not merged.get("evidence_claims"):
+        merged["evidence_claims"] = list(rule_report.get("evidence_claims") or [])
     if not merged.get("suspected_module"):
         merged["suspected_module"] = str(rule_report.get("suspected_module") or "unknown")
     if not merged.get("summary"):
         merged["summary"] = str(rule_report.get("summary") or "当前证据不足，无法生成明确结论。")
     return merged
+
+
+def _ground_report_claims(report: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep conclusion-to-evidence links valid after LLM/rule report merging."""
+    updated = dict(report)
+    logs = list(updated.get("evidence_logs") or [])
+    sources = list(updated.get("evidence_sources") or [])
+    valid_refs = {_log_ref_for_claim(log) for log in logs} | {_source_ref_for_claim(source) for source in sources}
+    claims: List[Dict[str, Any]] = []
+    for item in updated.get("evidence_claims") or []:
+        if not isinstance(item, dict):
+            continue
+        claim = str(item.get("claim") or "").strip()
+        if not claim:
+            continue
+        refs = [str(ref).strip() for ref in item.get("evidence_refs") or [] if str(ref).strip() in valid_refs]
+        support_level = str(item.get("support_level") or "unknown").strip().lower()
+        if support_level not in {"confirmed", "likely", "unknown"}:
+            support_level = "unknown"
+        try:
+            claim_confidence = float(item.get("confidence") or (0.8 if refs else 0.2))
+        except (TypeError, ValueError):
+            claim_confidence = 0.2
+        claims.append({
+            "claim": claim,
+            "evidence_refs": list(dict.fromkeys(refs))[:10],
+            "support_level": support_level if refs or support_level == "unknown" else "unknown",
+            "confidence": max(0.0, min(claim_confidence, 1.0)),
+        })
+
+    existing = {item["claim"] for item in claims}
+    for text in [updated.get("summary", "")] + list(updated.get("possible_causes") or []):
+        claim = str(text or "").strip()
+        if not claim or claim in existing:
+            continue
+        refs = _matching_claim_refs(claim, logs, sources)
+        claims.append({
+            "claim": claim,
+            "evidence_refs": refs,
+            "support_level": "confirmed" if refs else "unknown",
+            "confidence": 0.8 if refs else 0.2,
+        })
+        existing.add(claim)
+    updated["evidence_claims"] = claims[:20]
+    return updated
+
+
+def _matching_claim_refs(claim: str, logs: List[Dict[str, Any]], sources: List[Dict[str, Any]]) -> List[str]:
+    stop_words = {
+        "当前", "根据", "进行", "已经", "没有", "进入", "但是", "因此", "可能", "需要",
+        "机器人", "触摸事件", "日志证据", "源码证据", "安全规则", "前置检查",
+        "current", "action", "event", "interaction", "module", "task", "rule", "trigger",
+    }
+    tokens = {
+        token.casefold()
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9_:-]{3,}|[\u4e00-\u9fff]{2,}", claim)
+        if token.casefold() not in stop_words
+    }
+    refs: List[str] = []
+    for log in logs:
+        text = _log_search_text(log).casefold()
+        if tokens and sum(token in text for token in tokens) >= 1:
+            refs.append(_log_ref_for_claim(log))
+    for source in sources:
+        text = " ".join(str(source.get(key) or "") for key in ("repo", "file_path", "function_name", "matched_text", "snippet")).casefold()
+        if tokens and sum(token in text for token in tokens) >= min(2, len(tokens)):
+            refs.append(_source_ref_for_claim(source))
+    return list(dict.fromkeys(refs))[:10]
+
+
+def _log_ref_for_claim(log: Dict[str, Any]) -> str:
+    return f"log:{log.get('module_name', '')}/{log.get('file_name', '')}:{int(log.get('line_no') or 0)}"
+
+
+def _source_ref_for_claim(source: Dict[str, Any]) -> str:
+    function = str(source.get("function_name") or "unknown")
+    return f"source:{source.get('repo', '')}/{source.get('file_path', '')}:{function}"
 
 
 def _merge_history_context(report: Dict[str, Any], cases: List[Dict[str, Any]]) -> None:
@@ -577,6 +678,7 @@ def _empty_report(state: DiagnosisState) -> Dict[str, Any]:
         "execution_chain": [],
         "evidence_logs": [],
         "evidence_sources": [],
+        "evidence_claims": [],
         "recommended_actions": ["确认 Bug 发生时间、机器人类型和日志包是否完整。"],
         "confidence": 0.15,
         "questions_for_human": [
@@ -1049,12 +1151,7 @@ def _unique_logs(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
     seen = set()
     for log in logs:
-        key = (
-            str(log.get("module_name", "")),
-            str(log.get("file_name", "")),
-            int(log.get("line_no") or 0),
-            str(log.get("raw_line") or log.get("message") or ""),
-        )
+        key = _log_key(log)
         if key in seen:
             continue
         result.append(dict(log))
@@ -1066,16 +1163,29 @@ def _unique_sources(sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
     seen = set()
     for source in sources:
-        key = (
-            str(source.get("repo", "")),
-            str(source.get("file_path", "")),
-            str(source.get("function_name") or source.get("snippet") or ""),
-        )
+        key = _source_key(source)
         if key in seen:
             continue
         result.append(dict(source))
         seen.add(key)
     return result
+
+
+def _log_key(log: Dict[str, Any]) -> tuple[str, str, int, str]:
+    return (
+        str(log.get("module_name", "")),
+        str(log.get("file_name", "")),
+        int(log.get("line_no") or 0),
+        str(log.get("raw_line") or log.get("message") or ""),
+    )
+
+
+def _source_key(source: Dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(source.get("repo", "")),
+        str(source.get("file_path", "")),
+        str(source.get("function_name") or source.get("snippet") or ""),
+    )
 
 
 def _knowledge_items(values: List[Any]) -> List[Dict[str, Any]]:

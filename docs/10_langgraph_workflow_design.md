@@ -58,10 +58,13 @@ questions_for_human
 agent_version
 trace_id
 diagnostic_trace
+evidence_claims
 status
 ```
 
 `trace_id` 和 `diagnostic_trace` 由 Agent 返回后继续透传到 C++ `DiagnosisReport` 和 Web 诊断报告。公开轨迹只用于运行状态和证据链复核，不包含模型隐藏推理、完整 prompt 或敏感凭据。
+
+`evidence_claims` 是报告结论层的 grounding 结果。每项只能引用当前 `evidence_logs` 或 `evidence_sources` 生成的稳定 ref；无法绑定证据时必须使用 `support_level=unknown`，不能因为历史案例或知识库命中而标记为已确认。
 
 内部从直接调用 `rules.diagnose()` 演进为：
 

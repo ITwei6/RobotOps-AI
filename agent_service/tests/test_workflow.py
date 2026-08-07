@@ -51,6 +51,11 @@ class DiagnosisWorkflowTest(unittest.TestCase):
         self.assertGreaterEqual(report["confidence"], 0.8)
         self.assertIn("T1 CheckTouch 前置检查拦截", report["execution_chain"])
         self.assertEqual(report["evidence_sources"], [])
+        self.assertTrue(report["evidence_claims"])
+        self.assertTrue(any(
+            "log:interaction/interaction.log:3" in claim["evidence_refs"]
+            for claim in report["evidence_claims"]
+        ))
         search_source.assert_called_once()
 
     def test_workflow_keeps_low_confidence_without_evidence(self):

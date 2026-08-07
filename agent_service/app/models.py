@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +43,13 @@ class SourceEvidence(BaseModel):
     snippet: str = ""
 
 
+class EvidenceClaim(BaseModel):
+    claim: str
+    evidence_refs: List[str] = Field(default_factory=list)
+    support_level: Literal["confirmed", "likely", "unknown"] = "unknown"
+    confidence: float = 0.0
+
+
 class DiagnoseRequest(BaseModel):
     bug: BugContext
     logs: List[LogEvidence] = Field(default_factory=list)
@@ -59,6 +66,7 @@ class DiagnosisReport(BaseModel):
     module_relations: List[Dict[str, Any]] = Field(default_factory=list)
     evidence_logs: List[LogEvidence]
     evidence_sources: List[SourceEvidence]
+    evidence_claims: List[EvidenceClaim] = Field(default_factory=list)
     recommended_actions: List[str]
     confidence: float
     questions_for_human: List[str]

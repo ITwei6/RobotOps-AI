@@ -55,6 +55,19 @@ def evaluate_cases(
             for item in report.get("diagnostic_trace") or []
         }
         trace_complete = {"normalize_input", "finalize"}.issubset(trace_nodes)
+        valid_refs = {
+            f"log:{item.get('module_name', '')}/{item.get('file_name', '')}:{int(item.get('line_no') or 0)}"
+            for item in report.get("evidence_logs") or []
+        } | {
+            f"source:{item.get('repo', '')}/{item.get('file_path', '')}:{item.get('function_name') or 'unknown'}"
+            for item in evidence_sources
+        }
+        claims = list(report.get("evidence_claims") or [])
+        claim_grounded = all(
+            all(str(ref) in valid_refs for ref in claim.get("evidence_refs") or [])
+            for claim in claims
+        )
+        claim_coverage = _rate(sum(bool(claim.get("evidence_refs")) for claim in claims), len(claims)) if claims else 0.0
         results.append(
             {
                 "case_id": case_id,
@@ -69,6 +82,8 @@ def evaluate_cases(
                 "confidence": float(report.get("confidence") or 0.0),
                 "generation_mode": report.get("generation_mode", ""),
                 "trace_id_present": bool(str(report.get("trace_id") or "")),
+                "claim_grounded": claim_grounded,
+                "claim_evidence_coverage": claim_coverage,
             }
         )
 
@@ -92,6 +107,12 @@ def evaluate_cases(
         "trace_id_rate": _rate(
             sum(bool(item["trace_id_present"]) for item in results), total
         ),
+        "claim_grounding_rate": _rate(
+            sum(bool(item["claim_grounded"]) for item in results), total
+        ),
+        "claim_evidence_coverage": round(
+            sum(float(item["claim_evidence_coverage"]) for item in results) / total, 4
+        ) if total else 0.0,
         "average_confidence": round(
             sum(float(item["confidence"]) for item in results) / total, 4
         ) if total else 0.0,

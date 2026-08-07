@@ -2,6 +2,42 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-07 阶段 8.0：Agent 结论证据绑定与循环停止控制
+
+修改内容：
+
+- 新增 `EvidenceClaim` / `evidence_claims`，为摘要和可能原因提供 `evidence_refs`、`support_level`、`confidence`。
+- 引用只允许指向当前报告真实存在的日志或源码证据；无匹配证据时标记为 `unknown`。
+- DeepSeek prompt 增加结论 grounding 要求；规则 fallback 和 DeepSeek 报告统一经过 evidence ref 清洗。
+- LangGraph 在没有新增证据且没有待执行工具时停止，避免重复源码查询，同时保留案例和知识库阶段。
+- 离线评测新增 `claim_grounding_rate` 和 `claim_evidence_coverage`。
+- C++ `DiagnosisReport` 和 Web 报告透传并展示结论证据绑定。
+
+原因：
+
+- `possible_causes` 文本本身无法证明 Agent 结论来自哪些证据，无法支持人工复核和质量评测。
+- DeepSeek 可能反复提出相近源码查询，工作流需要识别无新增证据并安全停止。
+
+开发过程记录：
+
+- 先在报告合并后、置信度校准前加入统一 grounding 层。
+- 首次停止控制过早跳过 mc 和知识库阶段，回归测试发现后改为仅在没有待执行工具时停止。
+- 通用文本匹配过滤 `interaction/action` 等高频词，减少结论绑定到无关源码函数。
+
+验证结果：
+
+- Agent 单测：51/51 通过。
+- 离线评测：3/3 通过，`claim_grounding_rate=1.0`。
+- Agent compileall、C++ proto/服务编译、Web 构建均通过。
+
+下一步：
+
+- 接入人工复核反馈和最终修复 commit，扩充 DeepSeek/fallback 结论一致性评测。
+
+是否已提交 Git：
+
+- 待本阶段最终检查完成后提交。
+
 ## 2026-08-07 阶段 7.9：日志包解析与多模块时间窗口聚合
 
 修改内容：

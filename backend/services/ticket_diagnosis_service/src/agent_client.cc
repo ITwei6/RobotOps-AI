@@ -145,6 +145,15 @@ void fillTraceEvent(const Json::Value& value, robotops::ticket_diagnosis::Diagno
     event->set_detail(value.get("detail", "").asString());
 }
 
+void fillEvidenceClaim(const Json::Value& value, robotops::ticket_diagnosis::DiagnosisEvidenceClaim* claim) {
+    claim->set_claim(value.get("claim", "").asString());
+    claim->set_support_level(value.get("support_level", "unknown").asString());
+    claim->set_confidence(value.get("confidence", 0.0).asDouble());
+    for (const auto& evidence_ref : value["evidence_refs"]) {
+        claim->add_evidence_refs(evidence_ref.asString());
+    }
+}
+
 robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     const Json::Value& value,
     const robotops::ticket_diagnosis::BugTicket& ticket,
@@ -184,6 +193,9 @@ robotops::ticket_diagnosis::DiagnosisReport reportFromJson(
     }
     for (const auto& trace_value : value["diagnostic_trace"]) {
         fillTraceEvent(trace_value, report.add_diagnostic_trace());
+    }
+    for (const auto& claim_value : value["evidence_claims"]) {
+        fillEvidenceClaim(claim_value, report.add_evidence_claims());
     }
     return report;
 }
