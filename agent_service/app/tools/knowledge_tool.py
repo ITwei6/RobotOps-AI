@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from typing import Any, Dict, Sequence
 
-from agent_service.app.rag_retriever import LocalHybridRetriever, load_documents
+from agent_service.app.industrial_rag import retrieve_collection
+from agent_service.app.settings import load_settings
 
 
 def search_knowledge(roots: Sequence[str], args: Dict[str, Any]) -> Dict[str, Any]:
     query = _query_text(args)
     module = str(args.get("main_module") or "").strip().lower()
     limit = max(1, min(int(args.get("max_results") or 5), 20))
-    documents = load_documents(roots, collection="items")
-    matches = LocalHybridRetriever(documents).search(query, module=module, limit=limit)
-    response = {"ok": True, "knowledge_items": matches}
-    if documents:
-        response["retrieval"] = {"method": "hybrid_bm25_tfidf", "documents": len(documents)}
+    result = retrieve_collection(roots=roots, args=args, collection="items", settings=load_settings())
+    response = {"ok": True, "knowledge_items": result["results"]}
+    if result.get("retrieval", {}).get("documents", 0) or result.get("retrieval", {}).get("backend") == "elasticsearch":
+        response["retrieval"] = result["retrieval"]
     return response
 
 

@@ -19,6 +19,15 @@ class AgentSettings:
     source_repository_file: str
     case_search_roots: tuple[str, ...]
     knowledge_search_roots: tuple[str, ...]
+    rag_backend: str
+    rag_elasticsearch_url: str
+    rag_elasticsearch_user: str
+    rag_elasticsearch_password: str
+    rag_index_prefix: str
+    rag_embedding_url: str
+    rag_embedding_api_key: str
+    rag_embedding_model: str
+    rag_embedding_dimensions: int
 
 
 def load_settings() -> AgentSettings:
@@ -42,6 +51,15 @@ def load_settings() -> AgentSettings:
         source_repository_file=os.getenv("ROBOTOPS_SOURCE_REPOSITORY_FILE", ".robotops/source-repositories.json"),
         case_search_roots=_case_roots_env(),
         knowledge_search_roots=_knowledge_roots_env(),
+        rag_backend=os.getenv("ROBOTOPS_RAG_BACKEND", "local").strip().lower(),
+        rag_elasticsearch_url=os.getenv("ROBOTOPS_RAG_ELASTICSEARCH_URL", "http://127.0.0.1:9200").rstrip("/"),
+        rag_elasticsearch_user=os.getenv("ROBOTOPS_RAG_ELASTICSEARCH_USER", "elastic"),
+        rag_elasticsearch_password=os.getenv("ROBOTOPS_RAG_ELASTICSEARCH_PASSWORD", ""),
+        rag_index_prefix=os.getenv("ROBOTOPS_RAG_INDEX_PREFIX", "robotops-rag"),
+        rag_embedding_url=os.getenv("ROBOTOPS_RAG_EMBEDDING_URL", "").rstrip("/"),
+        rag_embedding_api_key=os.getenv("ROBOTOPS_RAG_EMBEDDING_API_KEY", ""),
+        rag_embedding_model=os.getenv("ROBOTOPS_RAG_EMBEDDING_MODEL", ""),
+        rag_embedding_dimensions=max(8, _int_env("ROBOTOPS_RAG_EMBEDDING_DIMENSIONS", 384)),
     )
 
 

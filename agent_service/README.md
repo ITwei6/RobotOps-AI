@@ -31,6 +31,8 @@
 - `case_search` 历史案例工具：读取配置目录下的 JSON/JSONL 案例，使用 BM25 + TF-IDF cosine 混合 RAG，返回文档来源、召回分数和 rank。
 - `knowledge_search` 知识检索工具：读取配置目录下的 JSON/JSONL SOP、错误码和模块说明，使用同一混合 RAG，并返回带 `source` 的参考条目。
 - `rag_retriever.py` 是依赖无关的本地 Retriever；索引按文档文件 mtime/size 在进程内缓存并自动刷新，RAG 结果只作为参考上下文。
+- `industrial_rag.py` 支持认证 Elasticsearch、文档 chunk、metadata 过滤、版本化 index 和 OpenAI-compatible Embedding；通过 `ROBOTOPS_RAG_BACKEND=elasticsearch` 启用。
+- `scripts/index_rag.py` 用于批量导入案例/知识文档；没有 Embedding 时使用 ES BM25，ES 不可用时回退本地 Retriever。
 - C++ `ticket-diagnosis-service.RunDiagnosis` 可通过 `log_package_id` 触发 Agent 自动调用 `log-service` 获取发生时间窗口日志。
 - 平台源码仓库注册表：管理员通过 `GET /source-repositories` 查看，`PUT /source-repositories/{module_name}` 配置 `repo_url`、默认 `branch`、可选 `commit` 和 `local_path`；诊断时按 `main_module` 自动取用。
 - `source_search` 支持源码工作区同步：远程 `source_repo` 未缓存时 clone，已有 Git 仓库先 `pull --ff-only`，可按 branch/commit 固定版本后再检索。

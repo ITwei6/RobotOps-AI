@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 8.1：案例与知识库混合 RAG
+阶段 8.2：工业级 RAG 后端
 ```
 
 已完成：
@@ -344,6 +344,8 @@ CHANGES.md
 - 离线评测新增结论 grounding 和证据覆盖率指标，C++ 与 Web 已透传结论证据绑定。
 - `case_search` 和 `knowledge_search` 已升级为本地混合 RAG，结合 BM25 与 TF-IDF cosine，并返回可追踪的召回分数和文档来源。
 - RAG 只用于历史案例、SOP、错误码和模块知识；日志继续使用时间窗口检索，源码继续使用 revision 感知索引。
+- 已接入认证 Elasticsearch 持久化 RAG，支持文档切分、metadata 过滤、版本化 index、BM25 和可选 dense vector 混合召回。
+- 新增 `scripts/index_rag.py` 批量导入案例/知识文档；ES 或 Embedding 不可用时自动回退本地 Retriever，并公开降级元数据。
 
 当前限制：
 
@@ -363,7 +365,7 @@ CHANGES.md
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
 - Agent 当前版本为 `langgraph-diagnosis-v3`，`generation_detail` 会记录源码索引检索策略和本次构建、更新或复用状态。
 - 全模块日志上下文会按模块均衡分配条数，避免 interaction 高频日志挤掉 mc、hal、hds、sm 和 agent 证据；Agent 同时保留 trace/task/session 关联字段。
-- 下一阶段优先加入真实案例/SOP 评测集和人工采纳率指标，再评估 Elasticsearch、Qdrant 或 FAISS 后端。
+- 下一阶段优先配置真实 Embedding 服务，补充向量召回、rerank、索引 alias 和健康监控。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。
 - 规则命中的源码位置现在只作为 `questions_for_human` 导航提示；只有 `source_search` 返回真实文件路径时，才允许进入 `evidence_sources`。

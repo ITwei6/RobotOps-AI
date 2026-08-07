@@ -32,6 +32,8 @@ class CaseSearchToolInput(BaseModel):
     description: str = ""
     robot_type: str = ""
     main_module: str = ""
+    software_version: str = ""
+    branch: str = ""
     keywords: List[str] = Field(default_factory=list)
     max_results: int = 5
 
@@ -40,6 +42,8 @@ class KnowledgeSearchToolInput(BaseModel):
     title: str = ""
     description: str = ""
     main_module: str = ""
+    software_version: str = ""
+    branch: str = ""
     keywords: List[str] = Field(default_factory=list)
     max_results: int = 5
 

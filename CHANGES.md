@@ -2,6 +2,47 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
+## 2026-08-07 阶段 8.2：工业级 RAG 后端
+
+修改内容：
+
+- 新增认证 Elasticsearch RAG 存储，支持版本化 index、文档 chunk、content hash、来源、模块、机型、软件版本、branch/commit 等 metadata。
+- 新增 OpenAI-compatible Embedding Client；配置 embedding URL/model/key 后，ES 使用 BM25 + dense vector script_score 混合召回。
+- Embedding 未配置时使用 ES BM25；ES 或 Embedding 不可用时自动回退本地混合 Retriever，并在 `retrieval` 元数据中记录降级原因。
+- 新增 `scripts/index_rag.py`，支持将 JSON/JSONL 历史案例和知识库批量切分、写入 Elasticsearch。
+- 索引名称包含 schema、向量维度和 embedding model hash，避免 embedding 模型或维度变化造成 mapping 冲突。
+- bulk 写入使用 `refresh=wait_for`，保证导入后可立即查询；查询支持模块、机器人类型、软件版本和 branch 过滤。
+- RAG 结果保留 backend、index、method、rank 和 embedding 状态，继续与当前日志/源码证据边界隔离。
+
+原因：
+
+- 本地 JSON/JSONL 检索适合开发和离线 fallback，但不能满足多进程、持久化、可扩展和生产检索要求。
+- 工业级 RAG 需要索引生命周期、metadata 过滤、向量模型切换隔离、故障降级和可观测召回信息。
+
+开发过程记录：
+
+- 先确认 Elasticsearch 7.17 已启用认证，使用容器内服务名连接，未将密码写入代码或文档。
+- 首次真实导入发现 bulk 写入后立即查询存在 refresh 延迟，改为 `refresh=wait_for`。
+- 首次查询输出缺少 backend 元数据，补充 ES retrieval metadata 后重新验证。
+- 当前开发环境没有 Embedding 服务，因此真实验证覆盖认证 ES、索引、chunk、BM25 查询和本地 fallback；dense vector 路径使用 mock 单测覆盖。
+
+验证结果：
+
+- Agent 单测：55/55 通过。
+- 认证 Elasticsearch：索引创建、批量写入和查询成功。
+- 真实 ES 查询模式：`elasticsearch_bm25`。
+- Embedding Client mock：OpenAI-compatible response 和 API header 解析通过。
+- Agent compileall 和离线评测保持通过。
+
+下一步：
+
+- 配置实际 embedding 服务，补充 dense vector 召回、BM25/向量融合和 rerank 的离线指标。
+- 增加 alias 切换、删除/重建任务、租户隔离和索引健康监控。
+
+是否已提交 Git：
+
+- 待本阶段最终检查完成后提交。
+
 ## 2026-08-07 阶段 8.1：案例与知识库混合 RAG
 
 修改内容：

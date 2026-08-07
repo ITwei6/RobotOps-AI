@@ -68,6 +68,8 @@ status
 
 `case_search` 和 `knowledge_search` 使用本地混合 RAG Retriever。RAG 返回的历史案例、SOP、错误码和模块说明属于参考上下文，不能写入当前报告的日志/源码 `evidence_refs`；日志时间窗口和源码 revision 检索仍由各自专用工具负责。
 
+生产环境可将 Retriever 切换为认证 Elasticsearch：使用 `scripts/index_rag.py` 导入 chunk，按模块、机型、软件版本和 branch 过滤；配置 OpenAI-compatible Embedding 后启用 dense vector 融合。ES、Embedding 和本地 fallback 的状态都通过 `retrieval` 元数据暴露。
+
 内部从直接调用 `rules.diagnose()` 演进为：
 
 ```text
