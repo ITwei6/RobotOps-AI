@@ -316,7 +316,7 @@ CHANGES.md
 当前处于：
 
 ```text
-阶段 8.3：Embedding 服务配置
+阶段 8.4：Embedding 服务可观测性
 ```
 
 已完成：
@@ -348,6 +348,7 @@ CHANGES.md
 - 新增 `scripts/index_rag.py` 批量导入案例/知识文档；ES 或 Embedding 不可用时自动回退本地 Retriever，并公开降级元数据。
 - 新增本地 `embedding_service`，使用 FastEmbed 提供 OpenAI-compatible `POST /v1/embeddings`，默认模型为 `BAAI/bge-small-zh-v1.5`，输出 512 维归一化向量。
 - `scripts/run_dev_stack.sh` 默认在 9004 启动 Embedding 服务，并将 9004/v1 注入 Agent；可通过 `ROBOTOPS_EMBEDDING_ENABLED=false` 关闭。
+- Embedding 服务新增 `/ready` readiness、`/warmup` 显式预热、`/metrics` Prometheus 格式指标和可选 `ROBOTOPS_EMBEDDING_PRELOAD=true` 启动预热。
 
 当前限制：
 
@@ -367,7 +368,7 @@ CHANGES.md
 - C++ AgentClient 的 HTTP 超时通过 `ROBOTOPS_AGENT_HTTP_TIMEOUT_MS` 配置，默认 300 秒，覆盖多轮源码规划和 DeepSeek 结构化报告的响应时间。
 - Agent 当前版本为 `langgraph-diagnosis-v3`，`generation_detail` 会记录源码索引检索策略和本次构建、更新或复用状态。
 - 全模块日志上下文会按模块均衡分配条数，避免 interaction 高频日志挤掉 mc、hal、hds、sm 和 agent 证据；Agent 同时保留 trace/task/session 关联字段。
-- 当前 Embedding 服务需要首次下载模型；生产环境应将 `ROBOTOPS_EMBEDDING_CACHE_DIR` 挂载到持久化模型目录，模型未就绪时 RAG 自动回退 BM25/本地 Retriever。
+- 当前 Embedding 服务需要首次下载模型；生产环境应将 `ROBOTOPS_EMBEDDING_CACHE_DIR` 挂载到持久化模型目录，模型未就绪时 RAG 自动回退 BM25/本地 Retriever。`/health` 表示进程状态，`/ready` 快速表示模型可推理，`/warmup` 才触发加载。
 - 下一阶段补充 dense vector 召回、BM25/向量融合和 rerank 的离线指标、索引 alias 和健康监控。
 - 源码仓库由平台管理员按模块配置，不由测试人员每次提交；支持 `interaction`、`mc`、`agent`、`hds` 等模块，管理接口为 `GET/PUT /source-repositories/{module_name}`。
 - 已验证真实 DeepSeek 诊断链路：日志包按 `log_package_id` 关联，成功返回 interaction 规则结论和日志证据。

@@ -2,7 +2,7 @@
 
 本文件记录 RobotOps AI 项目的阶段性变更。每完成一个阶段，都必须更新本文件并提交 Git。
 
-## 2026-08-08 阶段 8.3：Embedding 服务配置
+## 2026-08-08 阶段 8.4：Embedding 服务可观测性
 
 修改内容：
 
@@ -10,6 +10,10 @@
 - 默认使用 FastEmbed `BAAI/bge-small-zh-v1.5`，输出 512 维 L2 归一化向量，适配中文日志、源码和历史案例。
 - `scripts/run_dev_stack.sh` 默认启动 9004 Embedding 服务，并把服务地址、模型名和向量维度注入 Agent。
 - 增加 FastEmbed 依赖和 Embedding 服务单元测试；支持通过 `ROBOTOPS_EMBEDDING_CACHE_DIR` 挂载模型缓存。
+- 增加 `/ready` readiness 接口，区分进程存活和模型可推理状态。
+- 增加 `/warmup` 显式模型加载接口，避免 readiness 探针触发长时间下载。
+- 增加 `/metrics` Prometheus 格式指标，记录服务 ready、请求数、失败数和向量化输入数。
+- 增加 `ROBOTOPS_EMBEDDING_PRELOAD`，支持后台启动预热模型；预热失败不阻断 liveness，后续请求仍可重试。
 
 原因：
 
@@ -20,19 +24,22 @@
 
 - `embedding_service/`、`agent_service/requirements.txt`、开发栈启动脚本和 RAG 运行配置。
 - 9004 端口新增本地 Embedding 服务；模型未下载或服务不可用时，已有 ES BM25/本地 Retriever 降级保持有效。
+- 运维可通过 `/health`、`/ready` 和 `/metrics` 判断模型下载、加载和请求失败状态。
 
 开发过程记录：
 
 - 确认容器没有预装 Embedding Runtime，安装 FastEmbed 0.8.0 并确认中文模型维度为 512。
 - 实现懒加载模型，避免服务启动时阻塞；首次请求负责触发模型加载。
 - 开发容器当前无外网出口，真实模型首次下载返回 `Network is unreachable`；已保留明确的 503 未就绪状态，未伪装成可用服务。
+- 将 liveness 与 readiness 分离，并验证模型失败后不会影响进程存活或 RAG 降级。
+- 发现 readiness 触发模型下载会在无外网环境阻塞，改为快速检查并将加载动作移到 `/warmup` 或 Embedding 首次请求。
 
 验证结果：
 
 - Embedding 服务代码 `compileall` 通过。
-- Embedding 服务 OpenAI-compatible 响应、批量顺序、L2 归一化和懒加载单元测试：2/2 通过。
+- Embedding 服务 OpenAI-compatible 响应、批量顺序、L2 归一化、懒加载和指标单元测试：3/3 通过。
 - Agent 原有单元测试：55/55 通过。
-- 当前环境 `/health` 可访问，`ready=false`；首次推理因模型尚未下载返回 503。
+- 当前环境 `/health` 可访问，`ready=false`；`/ready` 返回 503，首次推理因模型尚未下载返回 503。
 
 下一步：
 
@@ -41,7 +48,7 @@
 
 是否已提交 Git：
 
-- 是，提交：`e92322f feat(agent): add local embedding service`。
+- 是，提交：`8366c87 feat(agent): add embedding readiness metrics`。
 
 ## 2026-08-07 阶段 8.2：工业级 RAG 后端
 

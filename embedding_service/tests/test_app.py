@@ -13,6 +13,10 @@ class _FakeModel:
 class EmbeddingServiceTest(unittest.TestCase):
     def setUp(self):
         embedding_app._model = None
+        embedding_app._model_error = ""
+        embedding_app._embedding_requests = 0
+        embedding_app._embedding_failures = 0
+        embedding_app._embedded_inputs = 0
 
     def test_openai_compatible_response_is_normalized(self):
         with patch.object(embedding_app, "TextEmbedding", return_value=_FakeModel()):
@@ -26,9 +30,20 @@ class EmbeddingServiceTest(unittest.TestCase):
 
     def test_model_is_loaded_lazily(self):
         self.assertFalse(embedding_app.health()["ready"])
+        with self.assertRaises(Exception):
+            embedding_app.ready()
         with patch.object(embedding_app, "TextEmbedding", return_value=_FakeModel()):
             embedding_app.embeddings(embedding_app.EmbeddingRequest(input="日志上下文"))
         self.assertTrue(embedding_app.health()["ready"])
+        self.assertEqual(embedding_app.ready()["status"], "ready")
+
+    def test_metrics_expose_request_counters(self):
+        with patch.object(embedding_app, "TextEmbedding", return_value=_FakeModel()):
+            embedding_app.embeddings(embedding_app.EmbeddingRequest(input="日志上下文"))
+        output = embedding_app.metrics()
+        self.assertIn("robotops_embedding_ready 1", output)
+        self.assertIn("robotops_embedding_requests_total 1", output)
+        self.assertIn("robotops_embedding_inputs_total 1", output)
 
 
 if __name__ == "__main__":

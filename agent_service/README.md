@@ -33,6 +33,7 @@
 - `rag_retriever.py` 是依赖无关的本地 Retriever；索引按文档文件 mtime/size 在进程内缓存并自动刷新，RAG 结果只作为参考上下文。
 - `industrial_rag.py` 支持认证 Elasticsearch、文档 chunk、metadata 过滤、版本化 index 和 OpenAI-compatible Embedding；通过 `ROBOTOPS_RAG_BACKEND=elasticsearch` 启用。
 - `embedding_service` 提供本地 FastEmbed OpenAI-compatible 服务：`POST http://127.0.0.1:9004/v1/embeddings`，默认 `BAAI/bge-small-zh-v1.5`、512 维；模型缓存通过 `ROBOTOPS_EMBEDDING_CACHE_DIR` 配置。
+- `/health` 是进程 liveness，`/ready` 只做快速模型状态检查，`/warmup` 才触发模型加载，`/metrics` 暴露请求、失败和输入数量；设置 `ROBOTOPS_EMBEDDING_PRELOAD=true` 可在启动时预热模型。
 - `scripts/index_rag.py` 用于批量导入案例/知识文档；没有 Embedding 时使用 ES BM25，ES 不可用时回退本地 Retriever。
 
 Embedding 服务配置：
